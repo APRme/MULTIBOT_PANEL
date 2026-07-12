@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MULTIBOT 控制面板</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div id="app">
+    <header id="status-bar"></header>
+    <main id="layout">
+      <section id="bots-panel" class="panel panel-middle"></section>
+      <div id="layout-resizer" class="layout-resizer" role="separator" aria-orientation="vertical" aria-label="调整左侧列表宽度"></div>
+      <section id="detail-panel" class="panel panel-right"></section>
+    </main>
+    <div id="backends-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-action="close-backends-modal"></div>
+      <div class="modal-dialog">
+        <section id="backends-panel" class="panel panel-modal"></section>
+      </div>
+    </div>
+    <div id="instances-modal" class="modal-shell" hidden>
+      <div class="modal-backdrop" data-action="close-instances-modal"></div>
+      <div class="modal-dialog modal-dialog-wide">
+        <section id="instances-panel" class="panel panel-modal"></section>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="./storage.js"></script>
+  <script defer src="./formatters.js"></script>
+  <script defer src="./api.js"></script>
+  <script defer src="./state.js"></script>
+  <script defer src="./sse.js"></script>
+  <script defer src="./instance-presets.js"></script>
+  <script defer src="./components/status-bar.js"></script>
+  <script defer src="./components/backends.js"></script>
+  <script defer src="./components/bot-list.js"></script>
+  <script defer src="./components/instances.js"></script>
+  <script defer src="./components/command-panel.js"></script>
+  <script defer src="./components/logs-panel.js"></script>
+  <script defer src="./components/bot-detail.js"></script>
+  <script defer src="./app.js"></script>
+</body>
+</html>

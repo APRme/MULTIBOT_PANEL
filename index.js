@@ -1,0 +1,191 @@
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+
+const DEFAULT_CONFIG = {
+  host: '127.0.0.1',
+  port: 18081,
+  title: 'MULTIBOT Panel'
+};
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon'
+};
+
+function loadPanelConfig(configPath) {
+  if (!configPath || !fs.existsSync(configPath)) {
+    return { ...DEFAULT_CONFIG };
+  }
+
+  const raw = fs.readFileSync(configPath, 'utf8').trim();
+  if (!raw) {
+    return { ...DEFAULT_CONFIG };
+  }
+
+  const parsed = JSON.parse(raw);
+  return {
+    ...DEFAULT_CONFIG,
+    ...(parsed && typeof parsed === 'object' ? parsed : {})
+  };
+}
+
+function sendJson(res, statusCode, payload) {
+  setSecurityHeaders(res);
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function sendText(res, statusCode, text) {
+  setSecurityHeaders(res);
+  res.writeHead(statusCode, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(text);
+}
+
+function setSecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' http: https:; frame-ancestors 'none'; base-uri 'self'");
+  res.setHeader('X-Frame-Options', 'DENY');
+}
+
+function resolvePublicFile(publicDir, requestPath) {
+  const normalizedRequestPath = requestPath === '/' ? '/index.html' : requestPath;
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(normalizedRequestPath);
+  } catch (error) {
+    const parseError = new Error('invalid url encoding');
+    parseError.statusCode = 400;
+    throw parseError;
+  }
+  const sanitizedPath = decodedPath.replace(/^\/+/, '');
+  const publicRoot = path.resolve(publicDir);
+  const fullPath = path.resolve(publicRoot, sanitizedPath);
+  const relativePath = path.relative(publicRoot, fullPath);
+
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  return fullPath;
+}
+
+function createPanelServer(options = {}) {
+  const publicDir = options.publicDir || path.join(__dirname, 'public');
+  const title = options.title || DEFAULT_CONFIG.title;
+
+  return http.createServer((req, res) => {
+    try {
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
+      const pathname = url.pathname;
+
+      if (req.method === 'GET' && pathname === '/healthz') {
+        sendJson(res, 200, { ok: true, title });
+        return;
+      }
+
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        sendJson(res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
+      const filePath = resolvePublicFile(publicDir, pathname);
+      if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+        sendText(res, 404, 'Not Found');
+        return;
+      }
+
+      const extension = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[extension] || 'application/octet-stream';
+
+      setSecurityHeaders(res);
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-cache'
+      });
+
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
+      const stream = fs.createReadStream(filePath);
+      stream.on('error', () => {
+        if (!res.headersSent) sendText(res, 500, 'Internal Server Error');
+        else res.destroy();
+      });
+      stream.pipe(res);
+    } catch (error) {
+      const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
+      if (!res.headersSent) {
+        sendText(res, statusCode, statusCode === 400 ? error.message : 'Internal Server Error');
+      } else {
+        res.destroy();
+      }
+    }
+  });
+}
+
+async function startPanelServer(options = {}) {
+  const configPath = options.configPath || path.join(__dirname, 'panel.config.json');
+  const config = loadPanelConfig(configPath);
+  const server = createPanelServer({
+    publicDir: path.join(__dirname, 'public'),
+    title: config.title
+  });
+
+  await new Promise((resolve) => {
+    server.listen(config.port, config.host, resolve);
+  });
+
+  return {
+    config,
+    server
+  };
+}
+
+async function main() {
+  const configPath = process.argv[2]
+    ? path.resolve(process.cwd(), process.argv[2])
+    : path.join(__dirname, 'panel.config.json');
+
+  const { config, server } = await startPanelServer({ configPath });
+  console.log(`[MULTIBOT_PANEL] listening on http://${config.host}:${config.port}`);
+
+  const shutdown = () => {
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('[MULTIBOT_PANEL] fatal error:', error && error.stack ? error.stack : error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  DEFAULT_CONFIG,
+  loadPanelConfig,
+  resolvePublicFile,
+  createPanelServer,
+  startPanelServer
+};
