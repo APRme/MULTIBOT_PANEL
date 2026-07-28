@@ -144,9 +144,9 @@
       </div>
       <div class="empty-state" data-role="bot-empty-state" ${filteredBots.length === 0 ? '' : 'hidden'}>没有匹配的 Bot。</div>
       <div class="list" data-scroll-id="bot-list" data-role="bot-list">
-        ${bots.length === 0
+        ${filteredBots.length === 0
           ? ''
-          : bots.map((bot) => `
+          : filteredBots.map((bot) => `
               <div
                 class="list-card ${backend.selectedBotId === bot.id ? 'selected' : ''}"
                 data-bot-card

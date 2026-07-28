@@ -992,6 +992,8 @@
       persistState();
       if (matchingBotId && selectedServerDir !== botFilterServerDraft) {
         selectBot(matchingBotId);
+      } else {
+        requestRender();
       }
     }
 
