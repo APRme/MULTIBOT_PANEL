@@ -609,7 +609,8 @@
 
       try {
         const response = await apiClient.getBots(backend);
-        const bots = Array.isArray(response.bots) ? response.bots : [];
+        const rawBots = Array.isArray(response.bots) ? response.bots : [];
+        const bots = await enrichBotServerDirectories(backend, rawBots);
         store.dispatch({
           type: 'SET_BACKEND_BOTS',
           backendId,
@@ -646,6 +647,20 @@
           sseConnected: false,
           lastError: error && error.message ? error.message : String(error)
         });
+      }
+    }
+
+    async function enrichBotServerDirectories(backend, bots) {
+      if (!botListComponent.hasMissingServerDirectories(bots)) {
+        return bots;
+      }
+
+      try {
+        const response = await apiClient.getInstances(backend);
+        const instances = Array.isArray(response.instances) ? response.instances : [];
+        return botListComponent.applyInstanceDirectories(bots, instances);
+      } catch (error) {
+        return bots;
       }
     }
 

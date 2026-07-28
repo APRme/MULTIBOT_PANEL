@@ -44,3 +44,20 @@ test('older bot summaries fall back to parsing the composite id', () => {
   assert.equal(botList.getBotServerDir(legacyBot), 'legacy-server');
   assert.equal(botList.getBotDisplayName(legacyBot, 'legacy-server'), 'legacy-bot');
 });
+
+test('instance directories fill missing grouping fields from older bot summaries', () => {
+  const legacyBots = [
+    { id: 'alpha-bot', username: 'Alpha' },
+    { id: 'beta__beta-bot', username: 'Beta' }
+  ];
+  const resolved = botList.applyInstanceDirectories(legacyBots, [
+    { id: 'alpha-bot', serverDir: 'alpha', botDir: 'alpha-bot' },
+    { id: 'beta__beta-bot', serverDir: 'beta', botDir: 'beta-bot' }
+  ]);
+
+  assert.equal(botList.hasMissingServerDirectories(legacyBots), true);
+  assert.equal(botList.resolveServerFilter(legacyBots, ''), '');
+  assert.equal(botList.hasMissingServerDirectories(resolved), false);
+  assert.deepEqual(botList.getServerOptions(resolved), ['alpha', 'beta']);
+  assert.equal(botList.getBotDisplayName(resolved[0], 'alpha'), 'alpha-bot');
+});

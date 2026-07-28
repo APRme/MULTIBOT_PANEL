@@ -37,10 +37,37 @@
       .sort((left, right) => left.localeCompare(right));
   }
 
+  function hasMissingServerDirectories(bots) {
+    return (bots || []).some((bot) => !getBotServerDir(bot));
+  }
+
+  function applyInstanceDirectories(bots, instances) {
+    const directoryByBotId = new Map();
+    (instances || []).forEach((instance) => {
+      const id = String(instance && instance.id || '').trim();
+      const serverDir = String(instance && instance.serverDir || '').trim();
+      const botDir = String(instance && instance.botDir || '').trim();
+      if (id && serverDir) {
+        directoryByBotId.set(id, { serverDir, botDir });
+      }
+    });
+
+    return (bots || []).map((bot) => {
+      const directory = directoryByBotId.get(String(bot && bot.id || '').trim());
+      if (!directory) return bot;
+      return {
+        ...bot,
+        serverDir: String(bot.serverDir || '').trim() || directory.serverDir,
+        botDir: String(bot.botDir || '').trim() || directory.botDir
+      };
+    });
+  }
+
   function resolveServerFilter(bots, requestedServerDir) {
     const options = getServerOptions(bots);
     const requested = String(requestedServerDir || '').trim();
-    return requested && options.includes(requested) ? requested : options[0] || '';
+    if (requested && options.includes(requested)) return requested;
+    return hasMissingServerDirectories(bots) ? '' : options[0] || '';
   }
 
   function applyFilters(bots, filterText, filterState, filterServer) {
@@ -81,6 +108,7 @@
     const initialFilterText = String(props.botFilterText || '');
     const initialFilterState = String(props.botFilterState || 'all');
     const serverOptions = getServerOptions(bots);
+    const hasUngroupedBots = hasMissingServerDirectories(bots);
     const initialFilterServer = resolveServerFilter(bots, props.botFilterServer);
     const filteredBots = applyFilters(bots, initialFilterText, initialFilterState, initialFilterServer);
     const serverBotCount = initialFilterServer
@@ -102,9 +130,9 @@
             <select class="select" data-filter="server" aria-label="服务器筛选">
               ${serverOptions.length === 0
                 ? '<option value="">无服务器</option>'
-                : serverOptions.map((serverDir) => `
+                : `${hasUngroupedBots ? '<option value="">全部服务器</option>' : ''}${serverOptions.map((serverDir) => `
                     <option value="${formatters.escapeHtml(serverDir)}" ${initialFilterServer === serverDir ? 'selected' : ''}>${formatters.escapeHtml(serverDir)}</option>
-                  `).join('')}
+                  `).join('')}`}
             </select>
             <select class="select" data-filter="state" aria-label="状态筛选">
               ${FILTER_STATES.map((state) => `
@@ -233,6 +261,8 @@
     getBotServerDir,
     getBotDisplayName,
     getServerOptions,
+    hasMissingServerDirectories,
+    applyInstanceDirectories,
     resolveServerFilter,
     renderBotList
   };
