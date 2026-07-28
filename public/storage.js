@@ -62,6 +62,7 @@
       autoScrollLogs: raw.autoScrollLogs !== false,
       botFilterText: typeof raw.botFilterText === 'string' ? raw.botFilterText : '',
       botFilterState: typeof raw.botFilterState === 'string' ? raw.botFilterState : 'all',
+      botFilterServer: typeof raw.botFilterServer === 'string' ? raw.botFilterServer : '',
       logLevelFilter: typeof raw.logLevelFilter === 'string' ? raw.logLevelFilter : 'all'
     };
   }
@@ -72,6 +73,7 @@
       autoScrollLogs: prefs && prefs.autoScrollLogs !== false,
       botFilterText: prefs && typeof prefs.botFilterText === 'string' ? prefs.botFilterText : '',
       botFilterState: prefs && typeof prefs.botFilterState === 'string' ? prefs.botFilterState : 'all',
+      botFilterServer: prefs && typeof prefs.botFilterServer === 'string' ? prefs.botFilterServer : '',
       logLevelFilter: prefs && typeof prefs.logLevelFilter === 'string' ? prefs.logLevelFilter : 'all'
     }));
   }

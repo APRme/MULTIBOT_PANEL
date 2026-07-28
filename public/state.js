@@ -7,6 +7,7 @@
     autoScrollLogs: true,
     botFilterText: '',
     botFilterState: 'all',
+    botFilterServer: '',
     logLevelFilter: 'all',
     globalMessage: null
   };

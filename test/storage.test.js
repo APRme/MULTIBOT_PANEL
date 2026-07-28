@@ -60,10 +60,10 @@ test('storage helpers fall back safely on malformed JSON and clamp history', () 
     autoScrollLogs: true,
     botFilterText: '',
     botFilterState: 'all',
+    botFilterServer: '',
     logLevelFilter: 'all'
   });
   assert.equal(storageApi.loadCommandHistory(storage).length, 20);
   assert.equal(storageApi.loadCommandHistory(storage)[0], 'cmd-0');
   assert.equal(storageApi.loadCommandHistory(storage)[19], 'cmd-19');
 });
-

@@ -181,6 +181,7 @@
     };
     let botFilterTextDraft = persistedUi.botFilterText || '';
     let botFilterStateDraft = persistedUi.botFilterState || 'all';
+    let botFilterServerDraft = persistedUi.botFilterServer || '';
     let botFilterSyncTimer = null;
     const instanceModalState = {
       backendId: null,
@@ -588,6 +589,7 @@
         autoScrollLogs: state.ui.autoScrollLogs,
         botFilterText: botFilterTextDraft,
         botFilterState: botFilterStateDraft,
+        botFilterServer: botFilterServerDraft,
         logLevelFilter: state.ui.logLevelFilter
       });
       storageApi.saveCommandHistory(global.localStorage, state.ui.commandHistory);
@@ -622,6 +624,7 @@
           lastError: null,
           lastSyncAt: new Date().toISOString()
         });
+        synchronizeServerSelection(backendId);
         selectFirstBotIfNeeded(store, backendId);
 
         const latestState = store.getState();
@@ -955,6 +958,51 @@
         botId
       });
       void loadBotDetails(backend.id, botId, { silent: true });
+    }
+
+    function selectServer(serverDir) {
+      botFilterServerDraft = String(serverDir || '').trim();
+      const backend = getSelectedBackend(store.getState());
+      if (!backend) {
+        persistState();
+        return;
+      }
+
+      const matchingBotId = backend.bots.allIds.find((botId) => {
+        return botListComponent.getBotServerDir(backend.bots.byId[botId]) === botFilterServerDraft;
+      });
+      const selectedBot = backend.selectedBotId ? backend.bots.byId[backend.selectedBotId] : null;
+      const selectedServerDir = botListComponent.getBotServerDir(selectedBot);
+
+      persistState();
+      if (matchingBotId && selectedServerDir !== botFilterServerDraft) {
+        selectBot(matchingBotId);
+      }
+    }
+
+    function synchronizeServerSelection(backendId) {
+      const state = store.getState();
+      if (state.backends.selectedBackendId !== backendId) return;
+
+      const backend = state.backends.byId[backendId];
+      if (!backend) return;
+
+      const bots = backend.bots.allIds.map((botId) => backend.bots.byId[botId]).filter(Boolean);
+      const resolvedServerDir = botListComponent.resolveServerFilter(bots, botFilterServerDraft);
+      const selectedBot = backend.selectedBotId ? backend.bots.byId[backend.selectedBotId] : null;
+      const selectedServerDir = botListComponent.getBotServerDir(selectedBot);
+      const matchingBot = bots.find((bot) => botListComponent.getBotServerDir(bot) === resolvedServerDir);
+      const filterChanged = resolvedServerDir !== botFilterServerDraft;
+
+      botFilterServerDraft = resolvedServerDir;
+      if (matchingBot && selectedServerDir !== resolvedServerDir) {
+        store.dispatch({
+          type: 'SET_SELECTED_BOT',
+          backendId,
+          botId: matchingBot.id
+        });
+      }
+      if (filterChanged) persistState();
     }
 
     async function focusInstanceBot(instanceId) {
@@ -1565,6 +1613,7 @@
         backend: selectedBackend,
         botFilterText: botFilterTextDraft,
         botFilterState: botFilterStateDraft,
+        botFilterServer: botFilterServerDraft,
         onRefreshBackend() {
           if (selectedBackend) {
             void refreshBackend(selectedBackend.id, { loadSelectedBot: true });
@@ -1576,6 +1625,9 @@
         onChangeFilterState(value) {
           botFilterStateDraft = String(value || 'all');
           persistState();
+        },
+        onChangeFilterServer(value) {
+          selectServer(value);
         },
         onSelectBot(botId) {
           selectBot(botId);

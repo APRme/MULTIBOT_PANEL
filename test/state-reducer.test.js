@@ -13,6 +13,7 @@ test('createInitialState restores backend selection and ui preferences', () => {
       autoScrollLogs: false,
       botFilterText: 'nit',
       botFilterState: 'running',
+      botFilterServer: 'server-b',
       logLevelFilter: 'warn'
     },
     commandHistory: ['health']
@@ -21,6 +22,7 @@ test('createInitialState restores backend selection and ui preferences', () => {
   assert.equal(state.backends.selectedBackendId, 'backend-2');
   assert.equal(state.ui.autoScrollLogs, false);
   assert.equal(state.ui.botFilterText, 'nit');
+  assert.equal(state.ui.botFilterServer, 'server-b');
   assert.deepEqual(state.ui.commandHistory, ['health']);
 });
 
