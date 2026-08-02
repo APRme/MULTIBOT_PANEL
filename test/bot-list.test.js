@@ -84,3 +84,20 @@ test('hidden elements override component display styles', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.css'), 'utf8');
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
 });
+
+test('bot avatar uses valid Minecraft usernames without exposing email logins', () => {
+  assert.equal(botList.getBotAvatarName({ username: 'APR_m' }), 'APR_m');
+  assert.equal(botList.getBotAvatarUrl({ username: 'APR_m' }), 'https://mc-heads.net/avatar/APR_m/40');
+  assert.equal(botList.getBotAvatarName({ username: 'player@example.com' }), '');
+  assert.equal(botList.getBotAvatarUrl({ username: 'player@example.com' }), '');
+});
+
+test('bot avatar keeps a stable local fallback', () => {
+  assert.equal(botList.getBotAvatarFallback({ username: 'APR_m', id: 'server__bot' }, 'server'), 'A');
+  assert.equal(botList.getBotAvatarFallback({ username: 'player@example.com', botDir: 'fallback-bot' }, 'server'), 'F');
+
+  const html = botList.buildBotAvatarHtml({ username: 'APR_m', id: 'server__bot' }, 'server');
+  assert.match(html, /class="bot-avatar"/);
+  assert.match(html, /class="bot-avatar-image"/);
+  assert.match(html, />A<\/span>/);
+});

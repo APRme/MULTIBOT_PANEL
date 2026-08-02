@@ -11,6 +11,7 @@
     { value: 'idle', label: formatters.formatStateText('idle') },
     { value: 'running', label: formatters.formatStateText('running') }
   ];
+  const MINECRAFT_USERNAME_PATTERN = /^[A-Za-z0-9_]{1,16}$/;
   const containerStates = new WeakMap();
 
   function buildBotChipsHtml(bot) {
@@ -42,6 +43,46 @@
       if (id.startsWith(prefix)) return id.slice(prefix.length);
     }
     return String(bot.id || '');
+  }
+
+  function getBotAvatarName(bot) {
+    const username = String(bot && bot.username || '').trim();
+    return MINECRAFT_USERNAME_PATTERN.test(username) ? username : '';
+  }
+
+  function getBotAvatarUrl(bot) {
+    const avatarName = getBotAvatarName(bot);
+    return avatarName ? `https://mc-heads.net/avatar/${encodeURIComponent(avatarName)}/40` : '';
+  }
+
+  function getBotAvatarFallback(bot, selectedServerDir) {
+    const label = getBotAvatarName(bot) || getBotDisplayName(bot, selectedServerDir);
+    return Array.from(String(label || '?').trim())[0]?.toUpperCase() || '?';
+  }
+
+  function buildBotAvatarHtml(bot, selectedServerDir) {
+    const avatarName = getBotAvatarName(bot);
+    const avatarUrl = getBotAvatarUrl(bot);
+    return `
+      <span class="bot-avatar" data-role="bot-avatar"${avatarName ? ` title="${formatters.escapeHtml(`${avatarName} 的皮肤头像`)}"` : ''} aria-hidden="true">
+        <span class="bot-avatar-fallback">${formatters.escapeHtml(getBotAvatarFallback(bot, selectedServerDir))}</span>
+        ${avatarUrl
+          ? `<img class="bot-avatar-image" data-role="bot-avatar-image" src="${formatters.escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+          : ''}
+      </span>
+    `;
+  }
+
+  function bindBotAvatarImages(container) {
+    container.querySelectorAll('[data-role="bot-avatar-image"]').forEach((image) => {
+      const hideBrokenImage = () => {
+        image.hidden = true;
+      };
+      image.addEventListener('error', hideBrokenImage, { once: true });
+      if (image.complete && image.naturalWidth === 0) {
+        hideBrokenImage();
+      }
+    });
   }
 
   function getServerOptions(bots) {
@@ -184,9 +225,10 @@
                     bot.host,
                     bot.state
                   ].map((value) => String(value || '')).join(' '))}">
-                  <div class="row space">
-                    <div class="stack">
-                      <strong class="mono" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
+                  <div class="row space bot-card-primary">
+                    <div class="bot-card-identity">
+                      ${buildBotAvatarHtml(bot, initialFilterServer)}
+                      <strong class="mono bot-card-name" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
                     </div>
                     <span class="badge ${formatters.formatStateClass(bot.state)}" data-role="bot-state-badge">${formatters.escapeHtml(formatters.formatStateText(bot.state))}</span>
                   </div>
@@ -199,6 +241,7 @@
       `;
 
       container.querySelector('[data-action="refresh-backend"]')?.addEventListener('click', () => props.onRefreshBackend());
+      bindBotAvatarImages(container);
       containerStates.set(container, { structureKey });
     }
 
@@ -314,7 +357,11 @@
 
   const api = {
     applyFilters,
+    buildBotAvatarHtml,
     buildBotChipsHtml,
+    getBotAvatarFallback,
+    getBotAvatarName,
+    getBotAvatarUrl,
     getBotServerDir,
     getBotDisplayName,
     getServerOptions,
