@@ -395,3 +395,207 @@ test('state reducer skips notifications for identical connection state updates',
 
   assert.equal(after, before);
 });
+
+test('state reducer merges and sorts bot logs by timestamp', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log: {
+      botId: 'bot-1',
+      timestamp: '2026-08-02T00:00:03.000Z',
+      level: 'info',
+      message: 'later'
+    }
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BOT_DETAILS',
+    backendId: 'backend-1',
+    bot: {
+      id: 'bot-1',
+      state: 'online',
+      logs: [
+        {
+          botId: 'bot-1',
+          timestamp: '2026-08-02T00:00:01.000Z',
+          level: 'info',
+          message: 'first'
+        },
+        {
+          botId: 'bot-1',
+          timestamp: '2026-08-02T00:00:02.000Z',
+          level: 'info',
+          message: 'second'
+        }
+      ]
+    },
+    loadedAt: '2026-08-02T00:00:04.000Z'
+  });
+
+  const logs = state.backends.byId['backend-1'].bots.byId['bot-1'].logs;
+  assert.deepEqual(logs.map((entry) => entry.message), ['first', 'second', 'later']);
+});
+
+test('state reducer sorts late-arriving log events by timestamp', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log: {
+      botId: 'bot-1',
+      timestamp: '2026-08-02T00:00:03.000Z',
+      level: 'info',
+      message: 'newer'
+    }
+  });
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log: {
+      botId: 'bot-1',
+      timestamp: '2026-08-02T00:00:01.000Z',
+      level: 'info',
+      message: 'older'
+    }
+  });
+
+  const logs = state.backends.byId['backend-1'].bots.byId['bot-1'].logs;
+  assert.deepEqual(logs.map((entry) => entry.message), ['older', 'newer']);
+});
+
+test('state reducer merges bootstrap history in timestamp order without unseen count', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log: {
+      botId: 'bot-1',
+      timestamp: '2026-08-02T00:00:03.000Z',
+      level: 'info',
+      message: 'new'
+    }
+  });
+  const beforeUnseen = state.backends.byId['backend-1'].bots.byId['bot-1'].unseenLogCount;
+
+  state = reduceState(state, {
+    type: 'MERGE_BOT_LOGS',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    logs: [
+      {
+        botId: 'bot-1',
+        timestamp: '2026-08-02T00:00:01.000Z',
+        level: 'info',
+        message: 'old-a'
+      },
+      {
+        botId: 'bot-1',
+        timestamp: '2026-08-02T00:00:02.000Z',
+        level: 'info',
+        message: 'old-b'
+      }
+    ],
+    historical: true
+  });
+
+  const bot = state.backends.byId['backend-1'].bots.byId['bot-1'];
+  assert.deepEqual(bot.logs.map((entry) => entry.message), ['old-a', 'old-b', 'new']);
+  assert.equal(bot.unseenLogCount, beforeUnseen);
+});
+
+test('state reducer skips notifications when merged logs are unchanged', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  const log = {
+    botId: 'bot-1',
+    timestamp: '2026-08-02T00:00:01.000Z',
+    level: 'info',
+    message: 'hello'
+  };
+
+  state = reduceState(state, {
+    type: 'MERGE_BOT_LOGS',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    logs: [log],
+    historical: true
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'MERGE_BOT_LOGS',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    logs: [log],
+    historical: true
+  });
+
+  assert.equal(after, before);
+});
+
+test('state reducer keeps distinct same-key logs beyond existing occurrences', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log: {
+      botId: 'bot-1',
+      timestamp: '2026-08-02T00:00:01.000Z',
+      level: 'info',
+      message: 'same'
+    }
+  });
+  state = reduceState(state, {
+    type: 'MERGE_BOT_LOGS',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    logs: [
+      {
+        botId: 'bot-1',
+        timestamp: '2026-08-02T00:00:01.000Z',
+        level: 'info',
+        message: 'same'
+      },
+      {
+        botId: 'bot-1',
+        timestamp: '2026-08-02T00:00:01.000Z',
+        level: 'info',
+        message: 'same'
+      }
+    ],
+    historical: true
+  });
+
+  const logs = state.backends.byId['backend-1'].bots.byId['bot-1'].logs;
+  assert.equal(logs.length, 2);
+});

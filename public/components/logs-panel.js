@@ -11,6 +11,15 @@
   const AUTO_SCROLL_MARGIN_PX = 40;
   const panelStates = new WeakMap();
 
+  function getLogKey(log) {
+    return [
+      String(log && log.botId || ''),
+      String(log && log.timestamp || ''),
+      String(log && log.level || ''),
+      String(log && log.message || '')
+    ].join('\u0000');
+  }
+
   function sanitizeLevelClass(level) {
     return String(level || 'info').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
   }
@@ -38,13 +47,36 @@
     });
     const botKey = String(props.botKey || '');
     const filterKey = String(props.logLevelFilter || 'all');
+    const firstKey = logs.length > 0 ? getLogKey(logs[0]) : null;
+    const lastKey = logs.length > 0 ? getLogKey(logs[logs.length - 1]) : null;
     let state = panelStates.get(container);
+    const tailGrewWithSameTail = Boolean(state && state.renderedCount > 0 &&
+      logs.length > state.renderedCount &&
+      state.lastRenderedKey === lastKey);
+    const frontChanged = Boolean(state && state.renderedCount > 0 &&
+      state.firstRenderedKey !== firstKey);
     const needsRebuild = !state ||
       state.botKey !== botKey ||
       state.filterKey !== filterKey ||
-      logs.length < (state.renderedCount || 0);
+      logs.length < (state.renderedCount || 0) ||
+      tailGrewWithSameTail ||
+      frontChanged;
 
+    let preserveScrollTop = null;
+    let previousWasNearBottom = true;
     if (needsRebuild) {
+      const previousLogView = container.querySelector('[data-role="log-view"]');
+      if (
+        previousLogView &&
+        state &&
+        state.botKey === botKey &&
+        state.filterKey === filterKey &&
+        state.renderedCount > 0
+      ) {
+        preserveScrollTop = previousLogView.scrollTop;
+        previousWasNearBottom = isNearBottom(previousLogView);
+      }
+
       container.innerHTML = `
         <div class="panel-section stack">
           <div class="toolbar">
@@ -92,7 +124,9 @@
         botKey,
         filterKey,
         renderedCount: 0,
-        wasNearBottom: true
+        wasNearBottom: previousWasNearBottom,
+        firstRenderedKey: null,
+        lastRenderedKey: null
       };
       panelStates.set(container, state);
     }
@@ -111,6 +145,11 @@
       }
       appendLogLines(logView, logs, state.renderedCount);
       state.renderedCount = logs.length;
+      state.firstRenderedKey = firstKey;
+      state.lastRenderedKey = lastKey;
+      if (preserveScrollTop !== null) {
+        logView.scrollTop = preserveScrollTop;
+      }
     }
 
     const nearBottom = isNearBottom(logView);

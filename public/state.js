@@ -140,21 +140,34 @@
     return `${botId}\u0000${timestamp}\u0000${level}\u0000${message}`;
   }
 
+  function compareLogEntries(left, right) {
+    const leftTimestamp = String(left && left.timestamp || '');
+    const rightTimestamp = String(right && right.timestamp || '');
+    if (leftTimestamp < rightTimestamp) return -1;
+    if (leftTimestamp > rightTimestamp) return 1;
+    return 0;
+  }
+
   function appendUniqueLogs(baseLogs, extraLogs) {
     const output = ensureArray(baseLogs).slice();
-    const seen = new Set(output.map(getLogEntryKey));
+    const seenCounts = new Map();
+    output.forEach((entry) => {
+      const key = getLogEntryKey(entry);
+      seenCounts.set(key, (seenCounts.get(key) || 0) + 1);
+    });
 
     ensureArray(extraLogs).forEach((entry) => {
       const key = getLogEntryKey(entry);
-      if (seen.has(key)) {
+      const count = seenCounts.get(key) || 0;
+      if (count > 0) {
+        seenCounts.set(key, count - 1);
         return;
       }
 
-      seen.add(key);
       output.push(entry);
     });
 
-    return output.slice(-500);
+    return output.sort(compareLogEntries).slice(-500);
   }
 
   function ensureSelectedBot(backend) {
@@ -337,6 +350,36 @@
           ...existingBot,
           logs,
           unseenLogCount: nextUnseenLogCount
+        };
+        if (!backend.bots.allIds.includes(botId)) {
+          backend.bots.allIds.push(botId);
+        }
+        return nextState;
+      }
+
+      case 'MERGE_BOT_LOGS': {
+        const backend = nextState.backends.byId[action.backendId];
+        if (!backend) return state;
+        const botId = action.botId;
+        if (!botId) return state;
+        const existingBot = backend.bots.byId[botId] || mergeBotSummary(null, { id: botId });
+        const existingLogs = ensureArray(existingBot.logs);
+        const mergedLogs = appendUniqueLogs(existingLogs, ensureArray(action.logs));
+        if (
+          mergedLogs.length === existingLogs.length &&
+          mergedLogs.every((entry, index) => getLogEntryKey(entry) === getLogEntryKey(existingLogs[index]))
+        ) {
+          return state;
+        }
+
+        const addedCount = Math.max(0, mergedLogs.length - existingLogs.length);
+        const isSelected = backend.selectedBotId === botId && nextState.backends.selectedBackendId === action.backendId;
+        backend.bots.byId[botId] = {
+          ...existingBot,
+          logs: mergedLogs,
+          unseenLogCount: isSelected || action.historical === true
+            ? (isSelected ? 0 : existingBot.unseenLogCount || 0)
+            : (existingBot.unseenLogCount || 0) + addedCount
         };
         if (!backend.bots.allIds.includes(botId)) {
           backend.bots.allIds.push(botId);

@@ -893,17 +893,15 @@
           : {};
         Object.keys(logsByBotId).forEach((botId) => {
           const logs = Array.isArray(logsByBotId[botId]) ? logsByBotId[botId] : [];
-          logs.forEach((log) => {
-            store.dispatch({
-              type: 'APPEND_BOT_LOG',
-              backendId,
-              botId,
-              log: {
-                ...log,
-                botId: log && log.botId ? log.botId : botId
-              },
-              historical: true
-            });
+          store.dispatch({
+            type: 'MERGE_BOT_LOGS',
+            backendId,
+            botId,
+            logs: logs.map((log) => ({
+              ...log,
+              botId: log && log.botId ? log.botId : botId
+            })),
+            historical: true
           });
         });
 
