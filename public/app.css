@@ -608,6 +608,11 @@ input[type="checkbox"] {
   font-size: 12px;
 }
 
+.switch-copy strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .switch-control > input[type="checkbox"] {
   position: absolute;
   width: 1px;
@@ -1125,6 +1130,117 @@ input[type="checkbox"] {
   max-height: 34vh;
 }
 
+.instance-editor-shell {
+  min-height: 100%;
+  background: var(--surface-raised);
+}
+
+.instance-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding-bottom: 0;
+  background: rgba(27, 33, 39, 0.97);
+  box-shadow: 0 8px 20px rgba(2, 8, 12, 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.instance-editor-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+}
+
+.instance-editor-tab {
+  position: relative;
+  min-width: max-content;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.instance-editor-tab:hover {
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+}
+
+.instance-editor-tab.active {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+  color: #8ec7ff;
+}
+
+.instance-editor-panel {
+  min-width: 0;
+}
+
+.instance-editor-panel[hidden] {
+  display: none;
+}
+
+.config-section {
+  padding: 18px 20px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-section:last-child {
+  border-bottom: 0;
+}
+
+.config-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.config-section-heading > strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.config-group {
+  gap: 10px;
+}
+
+.config-group + .config-group {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.config-group-title {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.preset-surface {
+  margin: 18px 20px 0;
+  padding: 14px;
+  border: 1px solid rgba(51, 153, 255, 0.24);
+  border-radius: var(--radius-control);
+  background: rgba(51, 153, 255, 0.055);
+}
+
+.advanced-json-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.advanced-json-grid .instance-editor-textarea {
+  min-height: 360px;
+  max-height: 56vh;
+}
+
 @media (max-width: 1440px) {
   #layout {
     grid-template-columns: minmax(286px, var(--bots-panel-width)) 8px minmax(0, 1fr);
@@ -1177,9 +1293,12 @@ input[type="checkbox"] {
 
   .detail-bottom,
   .instances-layout,
-  .instances-json-grid,
-  .instance-form-grid {
+  .instances-json-grid {
     grid-template-columns: 1fr;
+  }
+
+  .advanced-json-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .detail-bottom > *:not(:first-child),
@@ -1280,6 +1399,24 @@ input[type="checkbox"] {
 
   .instances-list-pane {
     max-height: 34dvh;
+  }
+
+  .instance-form-grid,
+  .advanced-json-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .instance-editor-header {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .config-section {
+    padding: 14px 12px 18px;
+  }
+
+  .preset-surface {
+    margin: 14px 12px 0;
   }
 }
 

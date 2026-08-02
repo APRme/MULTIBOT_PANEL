@@ -1,6 +1,59 @@
 (function (global) {
   const namespace = global.MultibotPanel = global.MultibotPanel || {};
   const formatters = namespace.formatters;
+  const EDITOR_TABS = Object.freeze([
+    { id: 'server', label: '服务器' },
+    { id: 'defaults', label: '共享默认' },
+    { id: 'bot', label: '当前实例' },
+    { id: 'json', label: '高级 JSON' }
+  ]);
+  const editorViewStates = new WeakMap();
+
+  function normalizeEditorTab(tabId, mode = 'edit') {
+    const requestedTab = String(tabId || '').trim();
+    if (EDITOR_TABS.some((tab) => tab.id === requestedTab)) {
+      return requestedTab;
+    }
+    return mode === 'create' ? 'server' : 'bot';
+  }
+
+  function resolveEditorViewState(container, editor) {
+    const mode = editor && editor.mode === 'create' ? 'create' : 'edit';
+    const previousState = editorViewStates.get(container);
+    const editorOpen = Boolean(editor && editor.open);
+    const activeTab = previousState && previousState.open && previousState.mode === mode
+      ? normalizeEditorTab(previousState.activeTab, mode)
+      : normalizeEditorTab('', mode);
+    const nextState = {
+      open: editorOpen,
+      mode,
+      activeTab
+    };
+    editorViewStates.set(container, nextState);
+    return nextState;
+  }
+
+  function applyEditorTab(container, tabId, mode = 'edit') {
+    const activeTab = normalizeEditorTab(tabId, mode);
+
+    container.querySelectorAll('[data-editor-tab]').forEach((element) => {
+      const selected = element.getAttribute('data-editor-tab') === activeTab;
+      element.classList.toggle('active', selected);
+      element.setAttribute('aria-selected', selected ? 'true' : 'false');
+      element.tabIndex = selected ? 0 : -1;
+    });
+
+    container.querySelectorAll('[data-editor-panel]').forEach((element) => {
+      element.hidden = element.getAttribute('data-editor-panel') !== activeTab;
+    });
+
+    editorViewStates.set(container, {
+      open: true,
+      mode,
+      activeTab
+    });
+    return activeTab;
+  }
 
   function stringifyJson(value) {
     try {
@@ -135,17 +188,19 @@
 
   function renderJsonBooleanField(fieldRoot, pathText, label, checked, helperText = '') {
     return `
-      <label class="label">
-        <span>${formatters.escapeHtml(label)}</span>
-        <div class="row helper">
-          <input
-            type="checkbox"
-            data-json-field="${formatters.escapeHtml(fieldRoot)}"
-            data-json-path="${formatters.escapeHtml(pathText)}"
-            data-json-type="boolean"
-            ${checked === true ? 'checked' : ''}>
-          ${formatters.escapeHtml(helperText || '')}
-        </div>
+      <label class="switch-control">
+        <span class="switch-copy">
+          <strong>${formatters.escapeHtml(label)}</strong>
+          ${helperText ? `<span class="helper">${formatters.escapeHtml(helperText)}</span>` : ''}
+        </span>
+        <input
+          type="checkbox"
+          data-json-field="${formatters.escapeHtml(fieldRoot)}"
+          data-json-path="${formatters.escapeHtml(pathText)}"
+          data-json-type="boolean"
+          aria-label="${formatters.escapeHtml(label)}"
+          ${checked === true ? 'checked' : ''}>
+        <span class="switch-track" aria-hidden="true"></span>
       </label>
     `;
   }
@@ -325,61 +380,95 @@
     `;
   }
 
-  function renderEditor(editor) {
+  function renderEditor(editor, activeTabId) {
     const draft = editor && editor.draft ? editor.draft : {};
     const presets = Array.isArray(editor && editor.presets) ? editor.presets : [];
     const serverObject = safeParseJsonObject(draft.serverJson);
     const defaultBotObject = safeParseJsonObject(draft.defaultBotJson);
     const botObject = safeParseJsonObject(draft.botJson);
+    const activeTab = normalizeEditorTab(activeTabId, editor && editor.mode);
 
     return `
-      <div class="panel-section stack">
-        <div class="toolbar">
-          <div class="stack">
-            <strong>${editor.mode === 'edit' ? '编辑实例' : '新建实例'}</strong>
-            <span class="helper">${editor.mode === 'edit'
-              ? '当前接口只支持更新配置，不支持重命名 serverDir / botDir。'
-              : '可直接编辑将要写入 server.json 与 config.json 的 JSON。'}</span>
+      <div class="instance-editor-shell" data-editor-mode="${editor.mode === 'create' ? 'create' : 'edit'}">
+        <div class="panel-section stack instance-editor-header">
+          <div class="toolbar">
+            <div class="stack">
+              <strong>${editor.mode === 'edit' ? '编辑实例' : '新建实例'}</strong>
+              <span class="helper">${editor.mode === 'edit'
+                ? '配置按服务器共享、共享默认和当前实例分区保存。实例目录名称不可修改。'
+                : '先设置服务器和实例目录，再按需调整共享默认或当前实例配置。'}</span>
+            </div>
+            <div class="toolbar-group">
+              <button class="button" data-action="cancel-instance-editor">取消</button>
+              <button class="button primary" data-action="save-instance-editor" ${editor.saving ? 'disabled' : ''}>${editor.saving ? '保存中...' : '保存'}</button>
+            </div>
           </div>
-          <div class="toolbar-group">
-            <button class="button" data-action="cancel-instance-editor">取消</button>
-            <button class="button primary" data-action="save-instance-editor" ${editor.saving ? 'disabled' : ''}>${editor.saving ? '保存中...' : '保存'}</button>
+          ${editor.error ? `<div class="message-banner">${formatters.escapeHtml(editor.error)}</div>` : ''}
+          <div class="instance-editor-tabs" role="tablist" aria-label="实例配置区域">
+            ${EDITOR_TABS.map((tab) => `
+              <button
+                class="instance-editor-tab ${activeTab === tab.id ? 'active' : ''}"
+                type="button"
+                role="tab"
+                id="instance-editor-tab-${tab.id}"
+                aria-controls="instance-editor-panel-${tab.id}"
+                aria-selected="${activeTab === tab.id ? 'true' : 'false'}"
+                tabindex="${activeTab === tab.id ? '0' : '-1'}"
+                data-editor-tab="${tab.id}">
+                ${tab.label}
+              </button>
+            `).join('')}
           </div>
         </div>
-        ${editor.error ? `<div class="message-banner">${formatters.escapeHtml(editor.error)}</div>` : ''}
-        <div class="instance-warning">
-          <code>serverJson</code> 对应共享的 <code>server.json</code>，编辑它会同步影响同服务器目录下的其他 Bot。
-        </div>
-        <div class="instance-warning">
-          <code>defaultBotJson</code> 对应共享的 <code>default.config.json</code>，优先级低于当前实例自己的 <code>config.json</code>，但会影响同服务器目录下的其他 Bot。
-        </div>
-        <div class="instance-form-grid">
-          <label class="label">
-            <span>serverDir</span>
-            <input
-              class="input mono"
-              data-editor-field="serverDir"
-              value="${formatters.escapeHtml(draft.serverDir || '')}"
-              ${editor.mode === 'edit' ? 'readonly' : ''}
-              placeholder="例如 my_server_localhost">
-          </label>
-          <label class="label">
-            <span>botDir</span>
-            <input
-              class="input mono"
-              data-editor-field="botDir"
-              value="${formatters.escapeHtml(draft.botDir || '')}"
-              ${editor.mode === 'edit' ? 'readonly' : ''}
-              placeholder="例如 Nitager">
-          </label>
-        </div>
-        <label class="row helper">
-          <input type="checkbox" data-editor-field="start" ${draft.start === true ? 'checked' : ''}>
-          保存后尝试启动该实例
-        </label>
-        <div class="panel-section stack">
-          <strong>服务器共享配置</strong>
-          <span class="helper">写入 <code>server.json</code>，同一 <code>serverDir</code> 下的所有 Bot 都会继承这里的连接配置。</span>
+        <section
+          class="instance-editor-panel"
+          role="tabpanel"
+          id="instance-editor-panel-server"
+          aria-labelledby="instance-editor-tab-server"
+          data-editor-panel="server"
+          ${activeTab === 'server' ? '' : 'hidden'}>
+          <div class="config-section stack">
+            <div class="config-section-heading">
+              <strong>实例位置</strong>
+              <span class="helper">目录用于定位配置文件；已有实例的目录名称不可修改。</span>
+            </div>
+            <div class="instance-form-grid">
+              <label class="label">
+                <span>serverDir</span>
+                <input
+                  class="input mono"
+                  data-editor-field="serverDir"
+                  value="${formatters.escapeHtml(draft.serverDir || '')}"
+                  ${editor.mode === 'edit' ? 'readonly' : ''}
+                  placeholder="例如 my_server_localhost">
+              </label>
+              <label class="label">
+                <span>botDir</span>
+                <input
+                  class="input mono"
+                  data-editor-field="botDir"
+                  value="${formatters.escapeHtml(draft.botDir || '')}"
+                  ${editor.mode === 'edit' ? 'readonly' : ''}
+                  placeholder="例如 Nitager">
+              </label>
+            </div>
+            <label class="switch-control">
+              <span class="switch-copy">
+                <strong>保存后启动</strong>
+                <span class="helper">保存成功后尝试启动该实例</span>
+              </span>
+              <input type="checkbox" data-editor-field="start" aria-label="保存后启动" ${draft.start === true ? 'checked' : ''}>
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="config-section stack">
+            <div class="config-section-heading">
+              <strong>服务器共享配置</strong>
+              <span class="helper">写入 <code>server.json</code>，同一 <code>serverDir</code> 下的所有 Bot 都会继承。</span>
+            </div>
+            <div class="instance-warning">
+              修改这里会同步影响同服务器目录下的其他 Bot，并触发它们重新加载连接配置。
+            </div>
           <div class="instance-form-grid">
             ${renderJsonTextField('serverJson', getServerJsonFieldPath(serverObject, 'host'), '主机地址', getServerJsonFieldValue(serverObject, 'host', '') ?? '', '', 'mc.example.com')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'port'), '端口', getServerJsonFieldValue(serverObject, 'port', 25565) ?? 25565, '', '1')}
@@ -400,11 +489,24 @@
             ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'restartOnDisconnect'), '断线自动重连', getServerJsonFieldValue(serverObject, 'restartOnDisconnect', true) !== false, '断线后自动拉起')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartDelayMs'), '重连延迟', getServerJsonFieldValue(serverObject, 'restartDelayMs', 60000) ?? 60000, '毫秒', '1')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartJitterMs'), '重连抖动', getServerJsonFieldValue(serverObject, 'restartJitterMs', 120000) ?? 120000, '毫秒', '1')}
+            </div>
           </div>
-        </div>
-        <div class="panel-section stack">
-          <strong>共享默认配置</strong>
-          <span class="helper">写入 <code>default.config.json</code>，用于同服 Bot 的默认行为；当前实例自己的 <code>config.json</code> 仍然优先。</span>
+        </section>
+        <section
+          class="instance-editor-panel"
+          role="tabpanel"
+          id="instance-editor-panel-defaults"
+          aria-labelledby="instance-editor-tab-defaults"
+          data-editor-panel="defaults"
+          ${activeTab === 'defaults' ? '' : 'hidden'}>
+          <div class="config-section stack">
+            <div class="config-section-heading">
+              <strong>共享默认配置</strong>
+              <span class="helper">写入 <code>default.config.json</code>；当前实例自己的 <code>config.json</code> 仍然优先。</span>
+            </div>
+            <div class="instance-warning">
+              这里的设置会影响同一 <code>serverDir</code> 下未在实例配置中覆盖对应字段的 Bot。
+            </div>
           <div class="instance-form-grid">
             ${renderJsonBooleanField('defaultBotJson', 'enabled', '启用实例', getJsonPathValue(defaultBotObject, 'enabled') !== false, '默认开启')}
             ${renderJsonBooleanField('defaultBotJson', 'autoStart', '自动启动', getJsonPathValue(defaultBotObject, 'autoStart') === true, '保存后尝试自动启动')}
@@ -433,9 +535,20 @@
             ${renderJsonTextField('defaultBotJson', 'recording.outputDir', '录制输出目录', getJsonPathValue(defaultBotObject, 'recording.outputDir') || '', '相对 bot 目录')}
           </div>
           ${renderJsonListField('defaultBotJson', 'trustedPlayers', '信任玩家列表', Array.isArray(getJsonPathValue(defaultBotObject, 'trustedPlayers')) ? getJsonPathValue(defaultBotObject, 'trustedPlayers') : [], '一行一个玩家名')}
-        </div>
-        <div class="stack">
-          <span>一键配置</span>
+          </div>
+        </section>
+        <section
+          class="instance-editor-panel"
+          role="tabpanel"
+          id="instance-editor-panel-bot"
+          aria-labelledby="instance-editor-tab-bot"
+          data-editor-panel="bot"
+          ${activeTab === 'bot' ? '' : 'hidden'}>
+        <div class="preset-surface stack">
+          <div class="config-section-heading">
+            <strong>一键配置</strong>
+            <span class="helper">模板只修改当前实例的 <code>config.json</code>。</span>
+          </div>
           <div class="chips">
             ${presets.length === 0
               ? '<span class="helper">当前没有可用模板</span>'
@@ -451,11 +564,13 @@
           </div>
           <span class="helper">选中后会常亮；再次点击会撤销该模板写入的配置项。</span>
         </div>
-        <div class="panel-section stack">
-          <strong>常用图形配置</strong>
-          <span class="helper">这些快捷项会直接同步到 <code>config.json</code>；复杂字段仍可在下方继续手工编辑。</span>
-          <div class="stack">
-            <span class="helper">基础</span>
+        <div class="config-section stack">
+          <div class="config-section-heading">
+            <strong>当前实例配置</strong>
+            <span class="helper">这些字段直接写入 <code>config.json</code>；未设置的字段继续继承共享默认值。</span>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">基础</strong>
             <div class="instance-form-grid">
               ${renderJsonBooleanField('botJson', 'enabled', '启用实例', getJsonPathValue(botObject, 'enabled') !== false, '停用后不会自动连接')}
               ${renderJsonBooleanField('botJson', 'autoStart', '自动启动', getJsonPathValue(botObject, 'autoStart') === true, '保存后尝试自动启动')}
@@ -482,8 +597,8 @@
               ${renderJsonNumberField('botJson', 'restartJitterMs', '重连抖动', getJsonPathValue(botObject, 'restartJitterMs') ?? 120000, '毫秒', '1')}
             </div>
           </div>
-          <div class="stack">
-            <span class="helper">信任与传送</span>
+          <div class="config-group stack">
+            <strong class="config-group-title">信任与传送</strong>
             <div class="instance-form-grid">
               ${renderJsonBooleanField('botJson', 'trustedPlayersMergeParent', '合并上层信任名单', getJsonPathValue(botObject, 'trustedPlayersMergeParent') === true, '影响 trustedPlayers 和 trustedPlayersFile')}
               ${renderJsonTextField('botJson', 'trustedPlayersFile', '额外信任名单文件', getJsonPathValue(botObject, 'trustedPlayersFile') || '', '按账号目录解析')}
@@ -496,11 +611,11 @@
             </div>
             ${renderJsonListField('botJson', 'trustedPlayers', '信任玩家列表', Array.isArray(getJsonPathValue(botObject, 'trustedPlayers')) ? getJsonPathValue(botObject, 'trustedPlayers') : [], '一行一个玩家名')}
           </div>
-          <div class="stack">
-            <span class="helper">能力与功能</span>
+          <div class="config-group stack">
+            <strong class="config-group-title">能力与功能</strong>
             <div class="instance-form-grid">
-              ${renderJsonBooleanField('botJson', 'capabilities.entityHandling', '禁用实体处理', getJsonPathValue(botObject, 'capabilities.entityHandling') !== false, '关闭后会禁用实体相关命令')}
-              ${renderJsonBooleanField('botJson', 'capabilities.terrainHandling', '禁用地形处理', getJsonPathValue(botObject, 'capabilities.terrainHandling') !== false, '关闭后会禁用地形相关命令')}
+              ${renderJsonBooleanField('botJson', 'capabilities.entityHandling', '启用实体处理', getJsonPathValue(botObject, 'capabilities.entityHandling') !== false, '关闭后会禁用实体相关命令')}
+              ${renderJsonBooleanField('botJson', 'capabilities.terrainHandling', '启用地形处理', getJsonPathValue(botObject, 'capabilities.terrainHandling') !== false, '关闭后会禁用地形相关命令')}
               ${renderJsonBooleanField('botJson', 'behavior.enableResourcePack', '自动接受资源包', getJsonPathValue(botObject, 'behavior.enableResourcePack') === true, '资源包提示自动接受')}
               ${renderJsonBooleanField('botJson', 'recording.enabled', '启用录制', getJsonPathValue(botObject, 'recording.enabled') === true, 'Flashback 录制器')}
               ${renderJsonBooleanField('botJson', 'fish', '自动钓鱼', getJsonPathValue(botObject, 'fish') === true, '上线后自动进入钓鱼')}
@@ -509,18 +624,35 @@
             </div>
           </div>
         </div>
-        <label class="label">
-          <span>server.json 内容</span>
-          <textarea class="textarea mono instance-editor-textarea" data-editor-field="serverJson" spellcheck="false">${formatters.escapeHtml(draft.serverJson || '{}')}</textarea>
-        </label>
-        <label class="label">
-          <span>default.config.json 内容</span>
-          <textarea class="textarea mono instance-editor-textarea" data-editor-field="defaultBotJson" spellcheck="false">${formatters.escapeHtml(draft.defaultBotJson || '{}')}</textarea>
-        </label>
-        <label class="label">
-          <span>config.json 内容</span>
-          <textarea class="textarea mono instance-editor-textarea" data-editor-field="botJson" spellcheck="false">${formatters.escapeHtml(draft.botJson || '{}')}</textarea>
-        </label>
+        </section>
+        <section
+          class="instance-editor-panel"
+          role="tabpanel"
+          id="instance-editor-panel-json"
+          aria-labelledby="instance-editor-tab-json"
+          data-editor-panel="json"
+          ${activeTab === 'json' ? '' : 'hidden'}>
+          <div class="config-section stack">
+            <div class="config-section-heading">
+              <strong>高级 JSON</strong>
+              <span class="helper">保存时仍按整文件替换。删除字段后，该字段会恢复继承上层配置或后端内建默认值。</span>
+            </div>
+            <div class="advanced-json-grid">
+              <label class="label">
+                <span>server.json</span>
+                <textarea class="textarea mono instance-editor-textarea" data-editor-field="serverJson" spellcheck="false">${formatters.escapeHtml(draft.serverJson || '{}')}</textarea>
+              </label>
+              <label class="label">
+                <span>default.config.json</span>
+                <textarea class="textarea mono instance-editor-textarea" data-editor-field="defaultBotJson" spellcheck="false">${formatters.escapeHtml(draft.defaultBotJson || '{}')}</textarea>
+              </label>
+              <label class="label">
+                <span>config.json</span>
+                <textarea class="textarea mono instance-editor-textarea" data-editor-field="botJson" spellcheck="false">${formatters.escapeHtml(draft.botJson || '{}')}</textarea>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
     `;
   }
@@ -537,6 +669,7 @@
       saving: false,
       presets: []
     };
+    const editorViewState = resolveEditorViewState(container, editor);
 
     if (!backend) {
       container.innerHTML = '<div class="panel-section"><div class="empty-state">请先选择一个后端。</div></div>';
@@ -586,7 +719,7 @@
         </div>
         <div class="instances-detail-pane" data-scroll-id="instance-detail">
           ${editor.open
-            ? renderEditor(editor)
+            ? renderEditor(editor, editorViewState.activeTab)
             : props.loadingDetail
               ? '<div class="panel-section"><div class="empty-state">实例详情加载中...</div></div>'
               : renderInstanceSummary(selectedInstance)}
@@ -641,6 +774,33 @@
     container.querySelector('[data-action="save-instance-editor"]')?.addEventListener('click', () => {
       props.onSaveEditor();
     });
+
+    const editorTabs = Array.from(container.querySelectorAll('[data-editor-tab]'));
+    editorTabs.forEach((element, index) => {
+      element.addEventListener('click', () => {
+        applyEditorTab(container, element.getAttribute('data-editor-tab'), editor.mode);
+      });
+      element.addEventListener('keydown', (event) => {
+        let nextIndex = index;
+        if (event.key === 'ArrowRight') {
+          nextIndex = (index + 1) % editorTabs.length;
+        } else if (event.key === 'ArrowLeft') {
+          nextIndex = (index - 1 + editorTabs.length) % editorTabs.length;
+        } else if (event.key === 'Home') {
+          nextIndex = 0;
+        } else if (event.key === 'End') {
+          nextIndex = editorTabs.length - 1;
+        } else {
+          return;
+        }
+
+        event.preventDefault();
+        const nextElement = editorTabs[nextIndex];
+        applyEditorTab(container, nextElement.getAttribute('data-editor-tab'), editor.mode);
+        nextElement.focus();
+      });
+    });
+
     container.querySelectorAll('[data-instance-preset]').forEach((element) => {
       element.addEventListener('click', () => {
         props.onApplyPreset(element.getAttribute('data-instance-preset') || '');
@@ -695,12 +855,20 @@
         if (fieldType === 'number' && value === undefined) {
           element.value = '';
         }
+        const jsonTextarea = container.querySelector(`[data-editor-field="${fieldRoot}"]`);
+        if (jsonTextarea) {
+          jsonTextarea.value = nextJsonText;
+        }
         props.onUpdateEditorField(fieldRoot, nextJsonText);
       });
     });
   }
 
   const api = {
+    EDITOR_TABS,
+    normalizeEditorTab,
+    applyEditorTab,
+    renderEditor,
     getInstanceKey,
     renderInstancesPanel
   };
