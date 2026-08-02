@@ -4,6 +4,12 @@
 
 These instructions apply only to the `MULTIBOT_PANEL/` directory tree.
 
+## Git 提交约定
+
+- 每次完成一个改动批次后，立即用 `git` 提交（除非用户明确要求暂不提交）。
+- 提交前先确认改动范围内的测试通过、`git status` 干净。
+- 提交信息应简短、准确地描述该批次改动。
+
 ## Project Focus
 
 `MULTIBOT_PANEL` is the browser-based operations panel for `MULTIBOT`.
