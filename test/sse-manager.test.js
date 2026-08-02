@@ -28,6 +28,26 @@ async function waitFor(predicate, timeoutMs = 1000) {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createAbortableReader(init) {
+  return {
+    async read() {
+      await new Promise((resolve, reject) => {
+        const onAbort = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        if (init.signal.aborted) {
+          onAbort();
+          return;
+        }
+        init.signal.addEventListener('abort', onAbort, { once: true });
+      });
+      return { done: true, value: undefined };
+    }
+  };
+}
+
 test('consumeEventStreamBuffer parses event blocks and preserves trailing partial data', () => {
   const events = [];
   const remainder = consumeEventStreamBuffer(
@@ -119,3 +139,117 @@ test('createSseManager streams events with auth header and emits state changes',
   assert.equal(scheduledReconnects.length, 1);
 });
 
+test('switching profiles does not emit errors for the aborted previous stream', async () => {
+  const states = [];
+  const errors = [];
+  const scheduledReconnects = [];
+  const fetchCalls = [];
+
+  const manager = createSseManager({
+    fetchImpl: async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.includes(':18081')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader() {
+              return createReaderFromChunks([]);
+            }
+          }
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader() {
+            return createAbortableReader(init);
+          }
+        }
+      };
+    },
+    setTimeoutFn(callback, delayMs) {
+      scheduledReconnects.push({ callback, delayMs });
+      return scheduledReconnects.length;
+    },
+    clearTimeoutFn() {},
+    onEvent() {
+    },
+    onStateChange(backendId, info) {
+      states.push({ backendId, info });
+    },
+    onError(backendId, error) {
+      errors.push({ backendId, error });
+    }
+  });
+
+  manager.connect({
+    id: 'backend-1',
+    baseUrl: 'http://127.0.0.1:18080',
+    token: 'token-1'
+  });
+  manager.connect({
+    id: 'backend-2',
+    baseUrl: 'http://127.0.0.1:18081',
+    token: 'token-2'
+  });
+
+  await waitFor(() => states.some((entry) => entry.backendId === 'backend-2' && entry.info.phase === 'closed'));
+
+  assert.equal(errors.length, 0);
+  assert.deepEqual(
+    states.filter((entry) => entry.backendId === 'backend-1').map((entry) => entry.info.phase),
+    ['connecting', 'open']
+  );
+  assert.equal(scheduledReconnects.length, 1);
+});
+
+test('explicit disconnect does not emit errors or error state', async () => {
+  const states = [];
+  const errors = [];
+  const scheduledReconnects = [];
+
+  const manager = createSseManager({
+    fetchImpl: async (url, init) => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader() {
+          return createAbortableReader(init);
+        }
+      }
+    }),
+    setTimeoutFn(callback, delayMs) {
+      scheduledReconnects.push({ callback, delayMs });
+      return scheduledReconnects.length;
+    },
+    clearTimeoutFn() {},
+    onEvent() {
+    },
+    onStateChange(backendId, info) {
+      states.push({ backendId, info });
+    },
+    onError(backendId, error) {
+      errors.push({ backendId, error });
+    }
+  });
+
+  manager.connect({
+    id: 'backend-1',
+    baseUrl: 'http://127.0.0.1:18080',
+    token: 'token-1'
+  });
+  manager.disconnect();
+  await wait(20);
+
+  assert.equal(errors.length, 0);
+  assert.equal(scheduledReconnects.length, 0);
+  assert.equal(
+    states.some((entry) => entry.backendId === 'backend-1' && (
+      entry.info.phase === 'error' || entry.info.phase === 'closed'
+    )),
+    false
+  );
+});

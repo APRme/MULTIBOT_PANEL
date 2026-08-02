@@ -204,6 +204,55 @@
       }
     };
 
+    const SSE_DEGRADED_FAILURE_THRESHOLD = 3;
+    const SSE_DEGRADED_DOWN_MS = 30000;
+    let sseFailureStreak = 0;
+    let sseDownSince = null;
+
+    function resetSseFailureTracking() {
+      sseFailureStreak = 0;
+      sseDownSince = null;
+    }
+
+    function shouldMarkSseDegraded() {
+      return sseFailureStreak >= SSE_DEGRADED_FAILURE_THRESHOLD ||
+        (sseDownSince !== null && Date.now() - sseDownSince >= SSE_DEGRADED_DOWN_MS);
+    }
+
+    function handleSseError(backendId, error) {
+      const backend = store.getState().backends.byId[backendId];
+      if (!backend) return;
+
+      const errorMessage = error && error.message ? error.message : String(error);
+      if (error && error.kind === 'auth_error') {
+        store.dispatch({
+          type: 'SET_BACKEND_CONNECTION_STATE',
+          backendId,
+          connectionState: 'auth_error',
+          sseConnected: false,
+          lastError: errorMessage
+        });
+        return;
+      }
+
+      sseFailureStreak += 1;
+      if (sseDownSince === null) {
+        sseDownSince = Date.now();
+      }
+
+      store.dispatch({
+        type: 'SET_BACKEND_CONNECTION_STATE',
+        backendId,
+        connectionState: !backend.lastSyncAt
+          ? 'offline'
+          : shouldMarkSseDegraded()
+            ? 'degraded'
+            : backend.connectionState,
+        sseConnected: false,
+        lastError: errorMessage
+      });
+    }
+
     const sseManager = sseModule.createSseManager({
       onEvent(backendId, event) {
         handleSseEvent(backendId, event);
@@ -212,20 +261,7 @@
         handleSseState(backendId, info);
       },
       onError(backendId, error) {
-        const backend = store.getState().backends.byId[backendId];
-        const connectionState = error && error.kind === 'auth_error'
-          ? 'auth_error'
-          : backend && backend.lastSyncAt
-            ? 'degraded'
-            : 'offline';
-
-        store.dispatch({
-          type: 'SET_BACKEND_CONNECTION_STATE',
-          backendId,
-          connectionState,
-          sseConnected: false,
-          lastError: error && error.message ? error.message : String(error)
-        });
+        handleSseError(backendId, error);
       }
     });
 
@@ -785,6 +821,7 @@
         return;
       }
 
+      resetSseFailureTracking();
       sseManager.connect(backend);
     }
 
@@ -829,6 +866,7 @@
           lastError: null,
           lastSyncAt: new Date().toISOString()
         });
+        resetSseFailureTracking();
         selectFirstBotIfNeeded(store, backendId);
         return;
       }
@@ -865,6 +903,7 @@
       if (!backend) return;
 
       if (info.phase === 'open') {
+        resetSseFailureTracking();
         store.dispatch({
           type: 'SET_BACKEND_CONNECTION_STATE',
           backendId,
@@ -879,27 +918,38 @@
         store.dispatch({
           type: 'SET_BACKEND_CONNECTION_STATE',
           backendId,
-          connectionState: backend.lastSyncAt ? 'degraded' : 'connecting',
+          connectionState: backend.lastSyncAt ? backend.connectionState : 'connecting',
           sseConnected: false
         });
         return;
       }
 
       if (info.phase === 'closed') {
+        if (sseDownSince === null) {
+          sseDownSince = Date.now();
+        }
         store.dispatch({
           type: 'SET_BACKEND_CONNECTION_STATE',
           backendId,
-          connectionState: backend.lastSyncAt ? 'degraded' : 'offline',
+          connectionState: backend.lastSyncAt ? backend.connectionState : 'offline',
           sseConnected: false
         });
         return;
       }
 
       if (info.phase === 'error') {
+        sseFailureStreak += 1;
+        if (sseDownSince === null) {
+          sseDownSince = Date.now();
+        }
         store.dispatch({
           type: 'SET_BACKEND_CONNECTION_STATE',
           backendId,
-          connectionState: backend.lastSyncAt ? 'degraded' : 'offline',
+          connectionState: !backend.lastSyncAt
+            ? 'offline'
+            : shouldMarkSseDegraded()
+              ? 'degraded'
+              : backend.connectionState,
           sseConnected: false,
           lastError: info.error && info.error.message ? info.error.message : backend.lastError
         });

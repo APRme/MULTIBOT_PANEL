@@ -122,7 +122,8 @@
         activeAbortController.abort();
       }
 
-      activeAbortController = new AbortController();
+      const controller = new AbortController();
+      activeAbortController = controller;
       onStateChange(profile.id, { phase: 'connecting', sseConnected: false });
 
       try {
@@ -132,7 +133,7 @@
             Authorization: `Bearer ${profile.token}`,
             Accept: 'text/event-stream'
           },
-          signal: activeAbortController.signal
+          signal: controller.signal
         });
 
         if (!response.ok) {
@@ -176,16 +177,13 @@
           scheduleReconnect(profile);
         }
       } catch (error) {
-        if (activeAbortController && activeAbortController.signal.aborted) {
+        if (controller.signal.aborted || !activeProfile || activeProfile.id !== profile.id) {
           return;
         }
 
         onError(profile.id, error);
         onStateChange(profile.id, { phase: 'error', sseConnected: false, error });
-
-        if (activeProfile && activeProfile.id === profile.id) {
-          scheduleReconnect(profile);
-        }
+        scheduleReconnect(profile);
       }
     }
 
