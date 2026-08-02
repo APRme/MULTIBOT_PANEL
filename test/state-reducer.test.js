@@ -211,3 +211,187 @@ test('state reducer appends historical bot logs without increasing unseen count'
   assert.equal(bot.logs.length, 1);
   assert.equal(bot.unseenLogCount, 0);
 });
+
+test('state reducer skips notifications when bot summaries are unchanged', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  const bots = [
+    {
+      id: 'bot-1',
+      username: 'Alpha',
+      state: 'online',
+      host: 'a.example',
+      port: 25565,
+      lock: { locked: true, owner: 'owner-x' }
+    }
+  ];
+
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{
+      ...bots[0],
+      lock: { owner: 'owner-x', locked: true }
+    }],
+    lastSyncAt: '2026-08-02T00:00:00.000Z'
+  });
+
+  assert.equal(after, before);
+});
+
+test('state reducer notifies when a bot summary field changes', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', state: 'online' }]
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', state: 'stopped' }]
+  });
+
+  assert.notEqual(after, before);
+  assert.equal(after.backends.byId['backend-1'].bots.byId['bot-1'].state, 'stopped');
+});
+
+test('state reducer skips notifications when bot details are unchanged', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  const log = {
+    botId: 'bot-1',
+    timestamp: '2026-08-02T00:00:00.000Z',
+    level: 'info',
+    message: 'spawned'
+  };
+
+  state = reduceState(state, {
+    type: 'SET_BOT_DETAILS',
+    backendId: 'backend-1',
+    bot: {
+      id: 'bot-1',
+      state: 'online',
+      logs: [log]
+    },
+    loadedAt: '2026-08-02T00:00:01.000Z'
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'SET_BOT_DETAILS',
+    backendId: 'backend-1',
+    bot: {
+      id: 'bot-1',
+      state: 'online',
+      logs: [log]
+    },
+    loadedAt: '2026-08-02T00:00:02.000Z'
+  });
+
+  assert.equal(after, before);
+});
+
+test('state reducer skips notifications for unchanged bot status events', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'UPSERT_BOT_SUMMARY',
+    backendId: 'backend-1',
+    bot: { id: 'bot-1', state: 'running' }
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'UPSERT_BOT_SUMMARY',
+    backendId: 'backend-1',
+    bot: { id: 'bot-1', state: 'running' }
+  });
+
+  assert.equal(after, before);
+});
+
+test('state reducer skips notifications for duplicate log events', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  const log = {
+    botId: 'bot-1',
+    timestamp: '2026-08-02T00:00:00.000Z',
+    level: 'info',
+    message: 'hello'
+  };
+
+  state = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'APPEND_BOT_LOG',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    log
+  });
+
+  assert.equal(after, before);
+});
+
+test('state reducer skips notifications for identical connection state updates', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BACKEND_CONNECTION_STATE',
+    backendId: 'backend-1',
+    connectionState: 'online',
+    sseConnected: false,
+    lastError: null
+  });
+  const before = state;
+
+  const after = reduceState(state, {
+    type: 'SET_BACKEND_CONNECTION_STATE',
+    backendId: 'backend-1',
+    connectionState: 'online',
+    sseConnected: false,
+    lastError: null
+  });
+
+  assert.equal(after, before);
+});

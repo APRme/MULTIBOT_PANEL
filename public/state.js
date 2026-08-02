@@ -35,6 +35,49 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function deepEqual(left, right) {
+    if (left === right) return true;
+    if (typeof left !== typeof right) return false;
+    if (left === null || right === null) return left === right;
+    if (typeof left !== 'object') return left === right;
+    if (Array.isArray(left) !== Array.isArray(right)) return false;
+
+    if (Array.isArray(left)) {
+      if (left.length !== right.length) return false;
+      return left.every((item, index) => deepEqual(item, right[index]));
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key, index) => (
+      key === rightKeys[index] && deepEqual(left[key], right[key])
+    ));
+  }
+
+  const BOT_SUMMARY_FIELDS = [
+    'id',
+    'username',
+    'host',
+    'port',
+    'state',
+    'desiredRunning',
+    'spawnCount',
+    'lastSpawnAt',
+    'lastEndAt',
+    'lock',
+    'serverDir',
+    'botDir',
+    'lastFailure',
+    'lastError',
+    'lastKick'
+  ];
+
+  function sameBotSummary(left, right) {
+    if (!left || !right) return false;
+    return BOT_SUMMARY_FIELDS.every((field) => deepEqual(left[field], right[field]));
+  }
+
   function createInitialState(persisted = {}) {
     const profiles = ensureArray(persisted.backends);
     const byId = {};
@@ -176,10 +219,22 @@
       case 'SET_BACKEND_CONNECTION_STATE': {
         const backend = nextState.backends.byId[action.backendId];
         if (!backend) return state;
-        backend.connectionState = action.connectionState || backend.connectionState;
-        backend.lastError = action.lastError === undefined ? backend.lastError : action.lastError;
-        backend.sseConnected = action.sseConnected === undefined ? backend.sseConnected : action.sseConnected;
-        backend.lastSyncAt = action.lastSyncAt === undefined ? backend.lastSyncAt : action.lastSyncAt;
+        const nextConnectionState = action.connectionState || backend.connectionState;
+        const nextLastError = action.lastError === undefined ? backend.lastError : action.lastError;
+        const nextSseConnected = action.sseConnected === undefined ? backend.sseConnected : action.sseConnected;
+        const nextLastSyncAt = action.lastSyncAt === undefined ? backend.lastSyncAt : action.lastSyncAt;
+        if (
+          backend.connectionState === nextConnectionState &&
+          backend.lastError === nextLastError &&
+          backend.sseConnected === nextSseConnected &&
+          backend.lastSyncAt === nextLastSyncAt
+        ) {
+          return state;
+        }
+        backend.connectionState = nextConnectionState;
+        backend.lastError = nextLastError;
+        backend.sseConnected = nextSseConnected;
+        backend.lastSyncAt = nextLastSyncAt;
         return nextState;
       }
 
@@ -187,9 +242,23 @@
         const backend = nextState.backends.byId[action.backendId];
         if (!backend) return state;
 
+        const incomingBots = ensureArray(action.bots).filter((bot) => bot && bot.id);
+        const existingBots = backend.bots.allIds
+          .map((botId) => backend.bots.byId[botId])
+          .filter(Boolean);
+        const summaryUnchanged = incomingBots.length === existingBots.length &&
+          incomingBots.every((bot, index) => (
+            existingBots[index] &&
+            existingBots[index].id === bot.id &&
+            sameBotSummary(existingBots[index], bot)
+          ));
+        if (summaryUnchanged) {
+          return state;
+        }
+
         const byId = {};
         const allIds = [];
-        ensureArray(action.bots).forEach((bot) => {
+        incomingBots.forEach((bot) => {
           if (!bot || !bot.id) return;
           const existing = backend.bots.byId[bot.id] || null;
           byId[bot.id] = mergeBotSummary(existing, bot);
@@ -208,6 +277,9 @@
         const bot = action.bot;
         if (!bot || !bot.id) return state;
         const existing = backend.bots.byId[bot.id] || null;
+        if (existing && sameBotSummary(existing, bot)) {
+          return state;
+        }
         backend.bots.byId[bot.id] = mergeBotSummary(existing, bot);
         if (!backend.bots.allIds.includes(bot.id)) {
           backend.bots.allIds.push(bot.id);
@@ -223,6 +295,14 @@
         if (!bot || !bot.id) return state;
         const existing = backend.bots.byId[bot.id] || null;
         const mergedLogs = appendUniqueLogs(ensureArray(bot.logs), existing && existing.logs);
+        if (
+          existing &&
+          sameBotSummary(existing, bot) &&
+          existing.recorderStatus === bot.recorderStatus &&
+          deepEqual(existing.logs, mergedLogs)
+        ) {
+          return state;
+        }
         backend.bots.byId[bot.id] = {
           ...mergeBotSummary(existing, bot),
           recorderStatus: bot.recorderStatus,
@@ -247,12 +327,16 @@
         const didAppend = !existingLogKeys.has(getLogEntryKey(action.log));
         const logs = appendUniqueLogs(existingLogs, [action.log]);
         const isSelected = backend.selectedBotId === botId && nextState.backends.selectedBackendId === action.backendId;
+        const nextUnseenLogCount = isSelected || action.historical === true
+          ? (isSelected ? 0 : existingBot.unseenLogCount || 0)
+          : (existingBot.unseenLogCount || 0) + (didAppend ? 1 : 0);
+        if (!didAppend && nextUnseenLogCount === (existingBot.unseenLogCount || 0)) {
+          return state;
+        }
         backend.bots.byId[botId] = {
           ...existingBot,
           logs,
-          unseenLogCount: isSelected || action.historical === true
-            ? (isSelected ? 0 : existingBot.unseenLogCount || 0)
-            : (existingBot.unseenLogCount || 0) + (didAppend ? 1 : 0)
+          unseenLogCount: nextUnseenLogCount
         };
         if (!backend.bots.allIds.includes(botId)) {
           backend.bots.allIds.push(botId);

@@ -2,6 +2,7 @@
   const namespace = global.MultibotPanel = global.MultibotPanel || {};
   const storageApi = namespace.storage;
   const formatters = namespace.formatters;
+  const stableStringify = formatters.stableStringify;
   const apiModule = namespace.api;
   const stateModule = namespace.state;
   const sseModule = namespace.sse;
@@ -374,6 +375,24 @@
       }
     }
 
+    const sectionCache = new WeakMap();
+
+    function renderSection(sectionKey, container, dataProps, renderFn) {
+      const serialized = stableStringify(dataProps);
+      const cached = sectionCache.get(container);
+      if (cached && cached.sectionKey === sectionKey && cached.serialized === serialized) {
+        return cached.extra || null;
+      }
+
+      const extra = renderFn(container, dataProps);
+      sectionCache.set(container, {
+        sectionKey,
+        serialized,
+        extra: extra || null
+      });
+      return extra || null;
+    }
+
     function flushScheduledRender() {
       cancelScheduledRender();
       const snapshot = pendingRenderSnapshot;
@@ -410,6 +429,7 @@
             ? dom.layout.querySelector(selector) || global.document.querySelector(selector)
             : global.document.querySelector(selector);
           if (!element) return;
+          if (element.hasAttribute('data-scroll-managed')) return;
           element.scrollTop = item.top || 0;
           element.scrollLeft = item.left || 0;
         });
@@ -635,13 +655,16 @@
       const state = store.getState();
       const backend = state.backends.byId[backendId];
       if (!backend || backend.enabled === false) return;
+      const silent = options && options.silent === true;
 
-      store.dispatch({
-        type: 'SET_BACKEND_CONNECTION_STATE',
-        backendId,
-        connectionState: 'connecting',
-        lastError: null
-      });
+      if (!silent) {
+        store.dispatch({
+          type: 'SET_BACKEND_CONNECTION_STATE',
+          backendId,
+          connectionState: 'connecting',
+          lastError: null
+        });
+      }
 
       try {
         const response = await apiClient.getBots(backend);
@@ -651,16 +674,18 @@
           type: 'SET_BACKEND_BOTS',
           backendId,
           bots,
-          lastSyncAt: new Date().toISOString()
+          lastSyncAt: silent ? undefined : new Date().toISOString()
         });
-        store.dispatch({
-          type: 'SET_BACKEND_CONNECTION_STATE',
-          backendId,
-          connectionState: 'online',
-          sseConnected: sseManager.getActiveBackendId() === backendId,
-          lastError: null,
-          lastSyncAt: new Date().toISOString()
-        });
+        if (!silent) {
+          store.dispatch({
+            type: 'SET_BACKEND_CONNECTION_STATE',
+            backendId,
+            connectionState: 'online',
+            sseConnected: sseManager.getActiveBackendId() === backendId,
+            lastError: null,
+            lastSyncAt: new Date().toISOString()
+          });
+        }
         synchronizeServerSelection(backendId);
         selectFirstBotIfNeeded(store, backendId);
 
@@ -700,26 +725,43 @@
       }
     }
 
-    async function refreshAllBackends() {
+    async function refreshAllBackends(options) {
       const state = store.getState();
+      const silent = options && options.silent === true;
       for (const backendId of state.backends.allIds) {
         const backend = state.backends.byId[backendId];
         if (backend && backend.enabled !== false) {
-          await refreshBackend(backendId, { loadSelectedBot: backendId === state.backends.selectedBackendId });
+          await refreshBackend(backendId, {
+            loadSelectedBot: backendId === state.backends.selectedBackendId,
+            silent
+          });
         }
       }
+    }
+
+    function instanceModalSignature() {
+      return stableStringify({
+        instances: instanceModalState.instances,
+        selectedKey: instanceModalState.selectedKey,
+        detail: instanceModalState.detail,
+        error: instanceModalState.error
+      });
     }
 
     async function refreshInstances(backendId, options = {}) {
       const backend = store.getState().backends.byId[backendId];
       if (!backend) return;
 
+      const silent = options.silent === true;
       instanceModalState.backendId = backendId;
-      if (!options.silent) {
+      if (!silent) {
         instanceModalState.loadingList = true;
       }
       instanceModalState.error = '';
-      requestRender();
+      const beforeSignature = instanceModalSignature();
+      if (!silent) {
+        requestRender();
+      }
 
       try {
         const response = await apiClient.getInstances(backend);
@@ -755,7 +797,9 @@
         instanceModalState.error = `加载实例列表失败: ${error.message}`;
       } finally {
         instanceModalState.loadingList = false;
-        requestRender();
+        if (!silent || instanceModalSignature() !== beforeSignature) {
+          requestRender();
+        }
       }
     }
 
@@ -763,9 +807,10 @@
       const backend = store.getState().backends.byId[backendId];
       if (!backend || !serverDir || !botDir) return;
 
+      const silent = options.silent === true;
       instanceModalState.selectedKey = getInstanceKey(serverDir, botDir);
-      instanceModalState.loadingDetail = !options.silent;
-      if (!options.silent) {
+      instanceModalState.loadingDetail = !silent;
+      if (!silent) {
         requestRender();
       }
 
@@ -777,7 +822,9 @@
         instanceModalState.error = `加载实例详情失败: ${error.message}`;
       } finally {
         instanceModalState.loadingDetail = false;
-        requestRender();
+        if (!silent) {
+          requestRender();
+        }
       }
     }
 
@@ -795,12 +842,14 @@
             bot: response.bot,
             loadedAt: new Date().toISOString()
           });
-          store.dispatch({
-            type: 'SET_BACKEND_CONNECTION_STATE',
-            backendId,
-            connectionState: backend.sseConnected ? 'online' : backend.connectionState === 'idle' ? 'online' : backend.connectionState,
-            lastError: null
-          });
+          if (!(options && options.silent)) {
+            store.dispatch({
+              type: 'SET_BACKEND_CONNECTION_STATE',
+              backendId,
+              connectionState: backend.sseConnected ? 'online' : backend.connectionState === 'idle' ? 'online' : backend.connectionState,
+              lastError: null
+            });
+          }
         }
       } catch (error) {
         if (!(options && options.silent)) {
@@ -1506,74 +1555,104 @@
       const selectedBackend = getSelectedBackend(state);
       const selectedBot = getSelectedBot(state);
 
-      statusBar.renderStatusBar(dom.statusBar, {
+      renderSection('status-bar', dom.statusBar, {
         title: 'MULTIBOT 控制面板',
         backendCount: state.backends.allIds.length,
-        selectedBackend,
-        selectedBot,
-        globalMessage: state.ui.globalMessage,
-        onOpenBackends() {
-          openBackendsModal();
-        },
-        onOpenInstances() {
-          openInstancesModal();
-        },
-        onRefresh() {
-          if (selectedBackend) {
-            void refreshBackend(selectedBackend.id, { loadSelectedBot: true });
-          } else {
-            void refreshAllBackends();
+        backendName: selectedBackend ? selectedBackend.name : null,
+        backendBaseUrl: selectedBackend ? selectedBackend.baseUrl : null,
+        backendConnectionState: selectedBackend ? selectedBackend.connectionState : null,
+        selectedBotId: selectedBot ? selectedBot.id : null,
+        globalMessage: state.ui.globalMessage
+      }, (container) => {
+        statusBar.renderStatusBar(container, {
+          title: 'MULTIBOT 控制面板',
+          backendCount: state.backends.allIds.length,
+          selectedBackend,
+          selectedBot,
+          globalMessage: state.ui.globalMessage,
+          onOpenBackends() {
+            openBackendsModal();
+          },
+          onOpenInstances() {
+            openInstancesModal();
+          },
+          onRefresh() {
+            if (selectedBackend) {
+              void refreshBackend(selectedBackend.id, { loadSelectedBot: true });
+            } else {
+              void refreshAllBackends();
+            }
+          },
+          onDismissMessage() {
+            store.dispatch({
+              type: 'SET_GLOBAL_MESSAGE',
+              message: null
+            });
           }
-        },
-        onDismissMessage() {
-          store.dispatch({
-            type: 'SET_GLOBAL_MESSAGE',
-            message: null
+        });
+      });
+
+      if (modalState.backendsOpen) {
+        renderSection('backends-panel', dom.backendsPanel, {
+          backends: state.backends.allIds.map((backendId) => {
+            const backend = state.backends.byId[backendId];
+            return {
+              id: backend.id,
+              name: backend.name,
+              baseUrl: backend.baseUrl,
+              tokenSet: Boolean(backend.token),
+              enabled: backend.enabled !== false,
+              connectionState: backend.connectionState,
+              botCount: backend.bots.allIds.length,
+              lastError: backend.lastError
+            };
+          }),
+          selectedBackendId: state.backends.selectedBackendId,
+          editor: editorState
+        }, (container) => {
+          backendsComponent.renderBackendsPanel(container, {
+            backends: state.backends.allIds.map((backendId) => state.backends.byId[backendId]).filter(Boolean),
+            selectedBackendId: state.backends.selectedBackendId,
+            editor: editorState,
+            onCloseModal() {
+              closeBackendsModal();
+            },
+            onAddBackend() {
+              openEditor('create');
+            },
+            onEditBackend(backendId) {
+              openEditor('edit', backendId);
+            },
+            onDeleteBackend(backendId) {
+              deleteBackend(backendId);
+            },
+            onToggleEnabled(backendId) {
+              toggleBackendEnabled(backendId);
+            },
+            onSelectBackend(backendId) {
+              selectBackend(backendId);
+            },
+            onCancelEditor() {
+              closeEditor();
+            },
+            onSaveEditor() {
+              void saveEditor();
+            },
+            onTestBackend() {
+              void testEditorBackend();
+            },
+            onUpdateEditorField(field, value) {
+              editorState.draft[field] = value;
+            },
+            onToggleShowToken(value) {
+              editorState.showToken = value === true;
+              requestRender();
+            }
           });
-        }
-      });
+        });
+      }
 
-      backendsComponent.renderBackendsPanel(dom.backendsPanel, {
-        backends: state.backends.allIds.map((backendId) => state.backends.byId[backendId]).filter(Boolean),
-        selectedBackendId: state.backends.selectedBackendId,
-        editor: editorState,
-        onCloseModal() {
-          closeBackendsModal();
-        },
-        onAddBackend() {
-          openEditor('create');
-        },
-        onEditBackend(backendId) {
-          openEditor('edit', backendId);
-        },
-        onDeleteBackend(backendId) {
-          deleteBackend(backendId);
-        },
-        onToggleEnabled(backendId) {
-          toggleBackendEnabled(backendId);
-        },
-        onSelectBackend(backendId) {
-          selectBackend(backendId);
-        },
-        onCancelEditor() {
-          closeEditor();
-        },
-        onSaveEditor() {
-          void saveEditor();
-        },
-        onTestBackend() {
-          void testEditorBackend();
-        },
-        onUpdateEditorField(field, value) {
-          editorState.draft[field] = value;
-        },
-        onToggleShowToken(value) {
-          editorState.showToken = value === true;
-          requestRender();
-        }
-      });
-
-      if (dom.instancesPanel) {
+      if (modalState.instancesOpen && dom.instancesPanel) {
         const modalBackend = instanceModalState.backendId
           ? state.backends.byId[instanceModalState.backendId] || null
           : selectedBackend;
@@ -1587,165 +1666,224 @@
           ? instanceModalState.detail
           : selectedSummary;
 
-        instancesComponent.renderInstancesPanel(dom.instancesPanel, {
-          backend: modalBackend,
+        renderSection('instances-panel', dom.instancesPanel, {
+          backendId: modalBackend ? modalBackend.id : null,
+          backendName: modalBackend ? modalBackend.name : null,
+          backendBaseUrl: modalBackend ? modalBackend.baseUrl : null,
           loadingList: instanceModalState.loadingList,
           loadingDetail: instanceModalState.loadingDetail,
           error: instanceModalState.error,
           instances: instanceModalState.instances,
           selectedKey: instanceModalState.selectedKey,
           selectedInstance,
-          editor: {
-            ...instanceModalState.editor,
-            presets: instancePresetsModule && typeof instancePresetsModule.getPresetDefinitions === 'function'
-              ? instancePresetsModule.getPresetDefinitions().map((preset) => ({
-                  ...preset,
-                  active: typeof instancePresetsModule.isPresetAppliedToDraft === 'function'
-                    ? instancePresetsModule.isPresetAppliedToDraft(instanceModalState.editor.draft, preset.id)
-                    : false
-                }))
-              : []
-          },
-          onClose() {
-            closeInstancesModal();
-          },
-          onRefreshInstances() {
-            if (modalBackend) {
-              void refreshInstances(modalBackend.id, {
-                selectKey: instanceModalState.selectedKey,
-                reloadDetail: true,
-                silent: instanceModalState.editor.open === true
-              });
-            }
-          },
-          onSelectInstance(serverDir, botDir) {
-            if (modalBackend) {
-              closeInstanceEditor();
-              void loadInstanceDetails(modalBackend.id, serverDir, botDir);
-            }
-          },
-          onRefreshInstance(serverDir, botDir) {
-            if (modalBackend) {
-              void loadInstanceDetails(modalBackend.id, serverDir, botDir, {
-                silent: instanceModalState.editor.open === true
-              });
-            }
-          },
-          onCreateInstance() {
-            void openInstanceEditor('create');
-          },
-          onEditInstance() {
-            void openInstanceEditor('edit');
-          },
-          onCancelEditor() {
-            cancelInstanceEditor();
-          },
-          onSaveEditor() {
-            void saveInstanceEditor();
-          },
-          onApplyPreset(presetId) {
-            if (!instancePresetsModule || typeof instancePresetsModule.togglePresetInDraft !== 'function') {
-              instanceModalState.editor.error = '预设模块未加载。';
-              requestRender();
-              return;
-            }
+          editor: instanceModalState.editor,
+          presets: instancePresetsModule && typeof instancePresetsModule.getPresetDefinitions === 'function'
+            ? instancePresetsModule.getPresetDefinitions()
+            : []
+        }, (container) => {
+          instancesComponent.renderInstancesPanel(container, {
+            backend: modalBackend,
+            loadingList: instanceModalState.loadingList,
+            loadingDetail: instanceModalState.loadingDetail,
+            error: instanceModalState.error,
+            instances: instanceModalState.instances,
+            selectedKey: instanceModalState.selectedKey,
+            selectedInstance,
+            editor: {
+              ...instanceModalState.editor,
+              presets: (instancePresetsModule && typeof instancePresetsModule.getPresetDefinitions === 'function'
+                ? instancePresetsModule.getPresetDefinitions()
+                : []
+              ).map((preset) => ({
+                ...preset,
+                active: typeof instancePresetsModule.isPresetAppliedToDraft === 'function'
+                  ? instancePresetsModule.isPresetAppliedToDraft(instanceModalState.editor.draft, preset.id)
+                  : false
+              }))
+            },
+            onClose() {
+              closeInstancesModal();
+            },
+            onRefreshInstances() {
+              if (modalBackend) {
+                void refreshInstances(modalBackend.id, {
+                  selectKey: instanceModalState.selectedKey,
+                  reloadDetail: true,
+                  silent: instanceModalState.editor.open === true
+                });
+              }
+            },
+            onSelectInstance(serverDir, botDir) {
+              if (modalBackend) {
+                closeInstanceEditor();
+                void loadInstanceDetails(modalBackend.id, serverDir, botDir);
+              }
+            },
+            onRefreshInstance(serverDir, botDir) {
+              if (modalBackend) {
+                void loadInstanceDetails(modalBackend.id, serverDir, botDir, {
+                  silent: instanceModalState.editor.open === true
+                });
+              }
+            },
+            onCreateInstance() {
+              void openInstanceEditor('create');
+            },
+            onEditInstance() {
+              void openInstanceEditor('edit');
+            },
+            onCancelEditor() {
+              cancelInstanceEditor();
+            },
+            onSaveEditor() {
+              void saveInstanceEditor();
+            },
+            onApplyPreset(presetId) {
+              if (!instancePresetsModule || typeof instancePresetsModule.togglePresetInDraft !== 'function') {
+                instanceModalState.editor.error = '预设模块未加载。';
+                requestRender();
+                return;
+              }
 
-            try {
-              instanceModalState.editor.draft = instancePresetsModule.togglePresetInDraft(
-                instanceModalState.editor.draft,
-                presetId
-              );
-              instanceModalState.editor.error = '';
-            } catch (error) {
-              instanceModalState.editor.error = error.message || String(error);
+              try {
+                instanceModalState.editor.draft = instancePresetsModule.togglePresetInDraft(
+                  instanceModalState.editor.draft,
+                  presetId
+                );
+                instanceModalState.editor.error = '';
+              } catch (error) {
+                instanceModalState.editor.error = error.message || String(error);
+              }
+              requestRender();
+            },
+            onUpdateEditorField(field, value) {
+              instanceModalState.editor.draft[field] = value;
+            },
+            onStartInstance(serverDir, botDir) {
+              void startInstance(serverDir, botDir);
+            },
+            onDeleteInstance(serverDir, botDir) {
+              void deleteInstance(serverDir, botDir);
+            },
+            onFocusBot(instanceId) {
+              void focusInstanceBot(instanceId);
             }
-            requestRender();
-          },
-          onUpdateEditorField(field, value) {
-            instanceModalState.editor.draft[field] = value;
-          },
-          onStartInstance(serverDir, botDir) {
-            void startInstance(serverDir, botDir);
-          },
-          onDeleteInstance(serverDir, botDir) {
-            void deleteInstance(serverDir, botDir);
-          },
-          onFocusBot(instanceId) {
-            void focusInstanceBot(instanceId);
-          }
+          });
         });
       }
 
-      botListComponent.renderBotList(dom.botsPanel, {
-        backend: selectedBackend,
+      renderSection('bot-list', dom.botsPanel, {
+        backendName: selectedBackend ? selectedBackend.name : null,
+        selectedBotId: selectedBackend ? selectedBackend.selectedBotId : null,
         botFilterText: botFilterTextDraft,
         botFilterState: botFilterStateDraft,
         botFilterServer: botFilterServerDraft,
-        onRefreshBackend() {
-          if (selectedBackend) {
-            void refreshBackend(selectedBackend.id, { loadSelectedBot: true });
+        bots: selectedBackend
+          ? selectedBackend.bots.allIds.map((botId) => {
+              const bot = selectedBackend.bots.byId[botId];
+              return {
+                id: bot.id,
+                username: bot.username,
+                host: bot.host,
+                port: bot.port,
+                state: bot.state,
+                lock: bot.lock,
+                serverDir: bot.serverDir,
+                botDir: bot.botDir,
+                lastFailure: bot.lastFailure,
+                lastError: bot.lastError,
+                lastKick: bot.lastKick
+              };
+            })
+          : []
+      }, (container) => {
+        botListComponent.renderBotList(container, {
+          backend: selectedBackend,
+          botFilterText: botFilterTextDraft,
+          botFilterState: botFilterStateDraft,
+          botFilterServer: botFilterServerDraft,
+          onRefreshBackend() {
+            if (selectedBackend) {
+              void refreshBackend(selectedBackend.id, { loadSelectedBot: true });
+            }
+          },
+          onChangeFilterText(value) {
+            commitBotFilterText(value);
+          },
+          onChangeFilterState(value) {
+            botFilterStateDraft = String(value || 'all');
+            persistState();
+          },
+          onChangeFilterServer(value) {
+            selectServer(value);
+          },
+          onSelectBot(botId) {
+            selectBot(botId);
+          },
+          onStartBot(botId) {
+            if (selectedBackend) void runBotAction('start', selectedBackend.id, botId);
+          },
+          onStopBot(botId) {
+            if (selectedBackend) void runBotAction('stop', selectedBackend.id, botId);
+          },
+          onRestartBot(botId) {
+            if (selectedBackend) void runBotAction('restart', selectedBackend.id, botId);
           }
-        },
-        onChangeFilterText(value) {
-          commitBotFilterText(value);
-        },
-        onChangeFilterState(value) {
-          botFilterStateDraft = String(value || 'all');
-          persistState();
-        },
-        onChangeFilterServer(value) {
-          selectServer(value);
-        },
-        onSelectBot(botId) {
-          selectBot(botId);
-        },
-        onStartBot(botId) {
-          if (selectedBackend) void runBotAction('start', selectedBackend.id, botId);
-        },
-        onStopBot(botId) {
-          if (selectedBackend) void runBotAction('stop', selectedBackend.id, botId);
-        },
-        onRestartBot(botId) {
-          if (selectedBackend) void runBotAction('restart', selectedBackend.id, botId);
-        }
+        });
       });
 
-      const detailSlots = botDetailComponent.renderBotDetail(dom.detailPanel, {
-        backend: selectedBackend,
-        bot: selectedBot,
-        onStartBot() {
-          if (selectedBackend && selectedBot) void runBotAction('start', selectedBackend.id, selectedBot.id);
-        },
-        onStopBot() {
-          if (selectedBackend && selectedBot) void runBotAction('stop', selectedBackend.id, selectedBot.id);
-        },
-        onRestartBot() {
-          if (selectedBackend && selectedBot) void runBotAction('restart', selectedBackend.id, selectedBot.id);
-        },
-        onRefreshBot() {
-          if (selectedBackend && selectedBot) void loadBotDetails(selectedBackend.id, selectedBot.id);
-        }
+      const detailSlots = renderSection('bot-detail', dom.detailPanel, selectedBot ? {
+        id: selectedBot.id,
+        username: selectedBot.username,
+        state: selectedBot.state,
+        lock: selectedBot.lock,
+        desiredRunning: selectedBot.desiredRunning,
+        spawnCount: selectedBot.spawnCount,
+        lastSpawnAt: selectedBot.lastSpawnAt,
+        lastEndAt: selectedBot.lastEndAt,
+        host: selectedBot.host,
+        port: selectedBot.port,
+        recorderStatus: selectedBot.recorderStatus,
+        lastFailure: selectedBot.lastFailure,
+        lastError: selectedBot.lastError,
+        lastKick: selectedBot.lastKick
+      } : {
+        empty: true
+      }, (container) => {
+        return botDetailComponent.renderBotDetail(container, {
+          backend: selectedBackend,
+          bot: selectedBot
+        });
       });
 
-      if (detailSlots.commandContainer && selectedBackend && selectedBot) {
-        commandPanelComponent.renderCommandPanel(detailSlots.commandContainer, {
-          bot: selectedBot,
+      if (detailSlots && detailSlots.commandContainer && selectedBackend && selectedBot) {
+        renderSection('command-panel', detailSlots.commandContainer, {
+          botId: selectedBot.id,
+          canSend: selectedBackend.connectionState !== 'offline' && selectedBackend.connectionState !== 'auth_error',
           commandHistory: state.ui.commandHistory,
           commandDraft: getCommandDraft(selectedBackend.id, selectedBot.id),
-          canSend: selectedBackend.connectionState !== 'offline' && selectedBackend.connectionState !== 'auth_error',
-          onSendCommand(command) {
-            return sendBotCommand(selectedBackend.id, selectedBot.id, command);
-          },
-          onUpdateCommandDraft(value) {
-            setCommandDraft(selectedBackend.id, selectedBot.id, value);
-          },
-          onUseHistory() {
-          }
+          lastCommandResult: selectedBot.lastCommandResult || null
+        }, (container) => {
+          commandPanelComponent.renderCommandPanel(container, {
+            bot: selectedBot,
+            commandHistory: state.ui.commandHistory,
+            commandDraft: getCommandDraft(selectedBackend.id, selectedBot.id),
+            canSend: selectedBackend.connectionState !== 'offline' && selectedBackend.connectionState !== 'auth_error',
+            onSendCommand(command) {
+              return sendBotCommand(selectedBackend.id, selectedBot.id, command);
+            },
+            onUpdateCommandDraft(value) {
+              setCommandDraft(selectedBackend.id, selectedBot.id, value);
+            },
+            onUseHistory() {
+            }
+          });
         });
       }
 
-      if (detailSlots.logsContainer && selectedBackend && selectedBot) {
+      if (detailSlots && detailSlots.logsContainer && selectedBackend && selectedBot) {
         logsPanelComponent.renderLogsPanel(detailSlots.logsContainer, {
+          botKey: `${selectedBackend.id}/${selectedBot.id}`,
           logs: selectedBot.logs || [],
           autoScrollLogs: state.ui.autoScrollLogs,
           logLevelFilter: state.ui.logLevelFilter,
@@ -1825,7 +1963,7 @@
     }
 
     refreshIntervalId = global.setInterval(() => {
-      void refreshAllBackends();
+      void refreshAllBackends({ silent: true });
     }, 30000);
 
     global.addEventListener('beforeunload', () => {

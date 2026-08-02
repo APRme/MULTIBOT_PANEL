@@ -26,6 +26,23 @@
       .replace(/'/g, '&#39;');
   }
 
+  function stableStringify(value) {
+    if (typeof value === 'function') {
+      return '[function]';
+    }
+
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value.map(stableStringify).join(',')}]`;
+    }
+
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+
   function shortenText(value, maxLength) {
     const text = String(value == null ? '' : value);
     const limit = Number.isFinite(maxLength) ? maxLength : 80;
@@ -106,6 +123,7 @@
 
   const api = {
     escapeHtml,
+    stableStringify,
     shortenText,
     formatDateTime,
     formatRelativeTime,

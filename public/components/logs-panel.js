@@ -8,63 +8,116 @@
     error: '错误',
     debug: '调试'
   };
+  const AUTO_SCROLL_MARGIN_PX = 40;
+  const panelStates = new WeakMap();
+
+  function sanitizeLevelClass(level) {
+    return String(level || 'info').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+  }
+
+  function appendLogLines(logView, logs, startIndex) {
+    const fragment = document.createDocumentFragment();
+    for (let index = startIndex; index < logs.length; index += 1) {
+      const log = logs[index];
+      const line = document.createElement('div');
+      line.className = `log-line level-${sanitizeLevelClass(log && log.level)}`;
+      line.textContent = formatters.formatConsoleLogEntry(log);
+      fragment.appendChild(line);
+    }
+    logView.appendChild(fragment);
+  }
+
+  function isNearBottom(logView) {
+    return logView.scrollTop + logView.clientHeight >= logView.scrollHeight - AUTO_SCROLL_MARGIN_PX;
+  }
 
   function renderLogsPanel(container, props) {
     const logs = (props.logs || []).filter((log) => {
       if (!props.logLevelFilter || props.logLevelFilter === 'all') return true;
       return String(log.level || '').toLowerCase() === String(props.logLevelFilter || '').toLowerCase();
     });
+    const botKey = String(props.botKey || '');
+    const filterKey = String(props.logLevelFilter || 'all');
+    let state = panelStates.get(container);
+    const needsRebuild = !state ||
+      state.botKey !== botKey ||
+      state.filterKey !== filterKey ||
+      logs.length < (state.renderedCount || 0);
 
-    container.innerHTML = `
-      <div class="panel-section stack">
-        <div class="toolbar">
-          <div class="toolbar-group">
-            <button class="button success small" data-action="start-bot">启动</button>
-            <button class="button warn small" data-action="stop-bot">停止</button>
-            <button class="button danger small" data-action="restart-bot">重启</button>
-            <button class="button small" data-action="refresh-bot">刷新</button>
+    if (needsRebuild) {
+      container.innerHTML = `
+        <div class="panel-section stack">
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <button class="button success small" data-action="start-bot">启动</button>
+              <button class="button warn small" data-action="stop-bot">停止</button>
+              <button class="button danger small" data-action="restart-bot">重启</button>
+              <button class="button small" data-action="refresh-bot">刷新</button>
+            </div>
+            <div class="toolbar-group">
+              <label class="row helper">
+                <input type="checkbox" data-action="toggle-autoscroll" ${props.autoScrollLogs ? 'checked' : ''}>
+                自动滚动
+              </label>
+              <select class="select" data-action="filter-level">
+                ${['all', 'info', 'warn', 'error', 'debug'].map((level) => `
+                  <option value="${level}" ${props.logLevelFilter === level ? 'selected' : ''}>${LOG_LEVEL_LABELS[level] || level}</option>
+                `).join('')}
+              </select>
+              <button class="button ghost small" data-action="clear-logs">清空</button>
+            </div>
           </div>
-          <div class="toolbar-group">
-            <label class="row helper">
-              <input type="checkbox" data-action="toggle-autoscroll" ${props.autoScrollLogs ? 'checked' : ''}>
-              自动滚动
-            </label>
-            <select class="select" data-action="filter-level">
-              ${['all', 'info', 'warn', 'error', 'debug'].map((level) => `
-                <option value="${level}" ${props.logLevelFilter === level ? 'selected' : ''}>${LOG_LEVEL_LABELS[level] || level}</option>
-              `).join('')}
-            </select>
-            <button class="button ghost small" data-action="clear-logs">清空</button>
-          </div>
+          <div class="helper">控制台日志</div>
+          <div class="log-view console" data-role="log-view" data-scroll-id="bot-logs" data-scroll-managed>${logs.length === 0
+            ? '<div class="empty-state">暂无日志。</div>'
+            : ''}</div>
         </div>
-        <div class="helper">控制台日志</div>
-        <div class="log-view console" data-role="log-view" data-scroll-id="bot-logs">${logs.length === 0
-          ? '<div class="empty-state">暂无日志。</div>'
-          : logs.map((log) => `<div class="log-line level-${formatters.escapeHtml(String(log.level || 'info').toLowerCase())}">${formatters.escapeHtml(formatters.formatConsoleLogEntry(log))}</div>`).join('')}</div>
-      </div>
-    `;
+      `;
 
-    container.querySelector('[data-action="start-bot"]')?.addEventListener('click', () => props.onStartBot());
-    container.querySelector('[data-action="stop-bot"]')?.addEventListener('click', () => props.onStopBot());
-    container.querySelector('[data-action="restart-bot"]')?.addEventListener('click', () => props.onRestartBot());
-    container.querySelector('[data-action="refresh-bot"]')?.addEventListener('click', () => props.onRefreshBot());
+      container.querySelector('[data-action="start-bot"]')?.addEventListener('click', () => props.onStartBot());
+      container.querySelector('[data-action="stop-bot"]')?.addEventListener('click', () => props.onStopBot());
+      container.querySelector('[data-action="restart-bot"]')?.addEventListener('click', () => props.onRestartBot());
+      container.querySelector('[data-action="refresh-bot"]')?.addEventListener('click', () => props.onRefreshBot());
+      container.querySelector('[data-action="toggle-autoscroll"]')?.addEventListener('change', (event) => {
+        props.onToggleAutoScroll(event.target.checked);
+      });
+      container.querySelector('[data-action="clear-logs"]')?.addEventListener('click', () => {
+        props.onClearLogs();
+      });
+      container.querySelector('[data-action="filter-level"]')?.addEventListener('change', (event) => {
+        props.onChangeLogLevel(event.target.value);
+      });
 
-    container.querySelector('[data-action="toggle-autoscroll"]')?.addEventListener('change', (event) => {
-      props.onToggleAutoScroll(event.target.checked);
-    });
-
-    container.querySelector('[data-action="clear-logs"]')?.addEventListener('click', () => {
-      props.onClearLogs();
-    });
-
-    container.querySelector('[data-action="filter-level"]')?.addEventListener('change', (event) => {
-      props.onChangeLogLevel(event.target.value);
-    });
+      state = {
+        botKey,
+        filterKey,
+        renderedCount: 0,
+        wasNearBottom: true
+      };
+      panelStates.set(container, state);
+    }
 
     const logView = container.querySelector('[data-role="log-view"]');
-    if (props.autoScrollLogs && logView) {
+    if (!logView) {
+      return;
+    }
+
+    if (logs.length > state.renderedCount) {
+      if (state.renderedCount === 0) {
+        const emptyState = logView.querySelector('.empty-state');
+        if (emptyState) {
+          emptyState.remove();
+        }
+      }
+      appendLogLines(logView, logs, state.renderedCount);
+      state.renderedCount = logs.length;
+    }
+
+    const nearBottom = isNearBottom(logView);
+    if (props.autoScrollLogs && (state.wasNearBottom || nearBottom)) {
       logView.scrollTop = logView.scrollHeight;
     }
+    state.wasNearBottom = isNearBottom(logView);
   }
 
   const api = {

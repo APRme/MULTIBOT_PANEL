@@ -11,6 +11,19 @@
     { value: 'idle', label: formatters.formatStateText('idle') },
     { value: 'running', label: formatters.formatStateText('running') }
   ];
+  const containerStates = new WeakMap();
+
+  function buildBotChipsHtml(bot) {
+    return `
+      <span class="chip mono">${formatters.escapeHtml(`${bot.host || '—'}:${bot.port || '—'}`)}</span>
+      ${bot.lock && bot.lock.locked
+        ? `<span class="chip">${formatters.escapeHtml(formatters.formatLockSummary(bot.lock))}</span>`
+        : ''}
+      ${bot.lastFailure || bot.lastError || bot.lastKick
+        ? `<span class="chip">${formatters.escapeHtml(formatters.summarizeError(bot.lastFailure || bot.lastError || bot.lastKick))}</span>`
+        : ''}
+    `;
+  }
 
   function getBotServerDir(bot) {
     const explicit = String(bot && bot.serverDir || '').trim();
@@ -97,6 +110,7 @@
 
     if (!backend) {
       container.innerHTML = '<div class="empty-state">请先选择一个后端。</div>';
+      containerStates.delete(container);
       return;
     }
 
@@ -115,72 +129,113 @@
       ? bots.filter((bot) => getBotServerDir(bot) === initialFilterServer).length
       : bots.length;
 
-    container.innerHTML = `
-      <div class="panel-section stack">
-        <div class="row space">
-          <div class="stack">
-            <h2 class="title">Bot 列表</h2>
-            <p class="subtitle" data-role="bot-count">${formatters.escapeHtml(backend.name)} · ${filteredBots.length}/${serverBotCount}</p>
-          </div>
-          <button class="button primary small" data-action="refresh-backend">刷新</button>
-        </div>
-        <div class="stack">
-          <input class="input grow" data-filter="text" value="${formatters.escapeHtml(props.botFilterText || '')}" placeholder="筛选 bot / 用户名 / 主机 / 状态">
-          <div class="filter-row">
-            <select class="select" data-filter="server" aria-label="服务器筛选">
-              ${serverOptions.length === 0
-                ? '<option value="">无服务器</option>'
-                : `${hasUngroupedBots ? '<option value="">全部服务器</option>' : ''}${serverOptions.map((serverDir) => `
-                    <option value="${formatters.escapeHtml(serverDir)}" ${initialFilterServer === serverDir ? 'selected' : ''}>${formatters.escapeHtml(serverDir)}</option>
-                  `).join('')}`}
-            </select>
-            <select class="select" data-filter="state" aria-label="状态筛选">
-              ${FILTER_STATES.map((state) => `
-                <option value="${state.value}" ${props.botFilterState === state.value ? 'selected' : ''}>${formatters.escapeHtml(state.label)}</option>
-              `).join('')}
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="empty-state" data-role="bot-empty-state" ${filteredBots.length === 0 ? '' : 'hidden'}>没有匹配的 Bot。</div>
-      <div class="list" data-scroll-id="bot-list" data-role="bot-list">
-        ${filteredBots.length === 0
-          ? ''
-          : filteredBots.map((bot) => `
-              <div
-                class="list-card ${backend.selectedBotId === bot.id ? 'selected' : ''}"
-                data-bot-card
-                data-bot-id="${formatters.escapeHtml(bot.id)}"
-                data-bot-state="${formatters.escapeHtml(String(bot.state || ''))}"
-                data-bot-server="${formatters.escapeHtml(getBotServerDir(bot))}"
-                data-bot-search="${formatters.escapeHtml([
-                  bot.id,
-                  bot.username,
-                  bot.host,
-                  bot.state
-                ].map((value) => String(value || '')).join(' '))}">
-                <div class="row space">
-                  <div class="stack">
-                    <strong class="mono" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
-                    <span class="subtitle">${formatters.escapeHtml(bot.username || '—')}</span>
-                  </div>
-                  <span class="badge ${formatters.formatStateClass(bot.state)}">${formatters.escapeHtml(formatters.formatStateText(bot.state))}</span>
-                </div>
-                <div class="row wrap">
-                  <span class="chip mono">${formatters.escapeHtml(`${bot.host || '—'}:${bot.port || '—'}`)}</span>
-                  ${bot.lock && bot.lock.locked
-                    ? `<span class="chip">${formatters.escapeHtml(formatters.formatLockSummary(bot.lock))}</span>`
-                    : ''}
-                  ${bot.lastFailure || bot.lastError || bot.lastKick
-                    ? `<span class="chip">${formatters.escapeHtml(formatters.summarizeError(bot.lastFailure || bot.lastError || bot.lastKick))}</span>`
-                    : ''}
-                </div>
-              </div>
-            `).join('')}
-      </div>
-    `;
+    const state = containerStates.get(container) || null;
+    const structureKey = formatters.stableStringify({
+      ids: bots.map((bot) => bot.id),
+      servers: serverOptions,
+      hasUngroupedBots,
+      filterServer: initialFilterServer
+    });
 
-    container.querySelector('[data-action="refresh-backend"]')?.addEventListener('click', () => props.onRefreshBackend());
+    if (!state || state.structureKey !== structureKey) {
+      container.innerHTML = `
+        <div class="panel-section stack">
+          <div class="row space">
+            <div class="stack">
+              <h2 class="title">Bot 列表</h2>
+              <p class="subtitle" data-role="bot-count">${formatters.escapeHtml(backend.name)} · ${filteredBots.length}/${serverBotCount}</p>
+            </div>
+            <button class="button primary small" data-action="refresh-backend">刷新</button>
+          </div>
+          <div class="stack">
+            <input class="input grow" data-filter="text" value="${formatters.escapeHtml(props.botFilterText || '')}" placeholder="筛选 bot / 用户名 / 主机 / 状态">
+            <div class="filter-row">
+              <select class="select" data-filter="server" aria-label="服务器筛选">
+                ${serverOptions.length === 0
+                  ? '<option value="">无服务器</option>'
+                  : `${hasUngroupedBots ? '<option value="">全部服务器</option>' : ''}${serverOptions.map((serverDir) => `
+                      <option value="${formatters.escapeHtml(serverDir)}" ${initialFilterServer === serverDir ? 'selected' : ''}>${formatters.escapeHtml(serverDir)}</option>
+                    `).join('')}`}
+              </select>
+              <select class="select" data-filter="state" aria-label="状态筛选">
+                ${FILTER_STATES.map((stateOption) => `
+                  <option value="${stateOption.value}" ${props.botFilterState === stateOption.value ? 'selected' : ''}>${formatters.escapeHtml(stateOption.label)}</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="empty-state" data-role="bot-empty-state" ${filteredBots.length === 0 ? '' : 'hidden'}>没有匹配的 Bot。</div>
+        <div class="list" data-scroll-id="bot-list" data-role="bot-list">
+          ${filteredBots.length === 0
+            ? ''
+            : filteredBots.map((bot) => `
+                <div
+                  class="list-card ${backend.selectedBotId === bot.id ? 'selected' : ''}"
+                  data-bot-card
+                  data-bot-id="${formatters.escapeHtml(bot.id)}"
+                  data-bot-state="${formatters.escapeHtml(String(bot.state || ''))}"
+                  data-bot-server="${formatters.escapeHtml(getBotServerDir(bot))}"
+                  data-bot-search="${formatters.escapeHtml([
+                    bot.id,
+                    bot.username,
+                    bot.host,
+                    bot.state
+                  ].map((value) => String(value || '')).join(' '))}">
+                  <div class="row space">
+                    <div class="stack">
+                      <strong class="mono" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
+                      <span class="subtitle" data-role="bot-username">${formatters.escapeHtml(bot.username || '—')}</span>
+                    </div>
+                    <span class="badge ${formatters.formatStateClass(bot.state)}" data-role="bot-state-badge">${formatters.escapeHtml(formatters.formatStateText(bot.state))}</span>
+                  </div>
+                  <div class="row wrap" data-role="bot-chips">
+                    ${buildBotChipsHtml(bot)}
+                  </div>
+                </div>
+              `).join('')}
+        </div>
+      `;
+
+      container.querySelector('[data-action="refresh-backend"]')?.addEventListener('click', () => props.onRefreshBackend());
+      containerStates.set(container, { structureKey });
+    }
+
+    container.querySelectorAll('[data-bot-card]').forEach((card) => {
+      const botId = card.getAttribute('data-bot-id');
+      const bot = backend.bots.byId[botId];
+      if (!bot) return;
+
+      card.classList.toggle('selected', backend.selectedBotId === botId);
+      card.setAttribute('data-bot-state', String(bot.state || ''));
+      card.setAttribute('data-bot-server', getBotServerDir(bot));
+
+      const displayName = card.querySelector('[data-role="bot-display-name"]');
+      if (displayName) {
+        displayName.textContent = getBotDisplayName(bot, initialFilterServer);
+      }
+      const username = card.querySelector('[data-role="bot-username"]');
+      if (username) {
+        username.textContent = bot.username || '—';
+      }
+      const badge = card.querySelector('[data-role="bot-state-badge"]');
+      if (badge) {
+        badge.className = `badge ${formatters.formatStateClass(bot.state)}`;
+        badge.textContent = formatters.formatStateText(bot.state);
+      }
+      const chips = card.querySelector('[data-role="bot-chips"]');
+      if (chips) {
+        chips.innerHTML = buildBotChipsHtml(bot);
+      }
+
+      card.setAttribute('data-bot-search', [
+        bot.id,
+        bot.username,
+        bot.host,
+        bot.state
+      ].map((value) => String(value || '')).join(' '));
+    });
+
     const textInput = container.querySelector('[data-filter="text"]');
     const stateSelect = container.querySelector('[data-filter="state"]');
     const serverSelect = container.querySelector('[data-filter="server"]');
@@ -222,29 +277,31 @@
       }
     }
 
-    textInput?.addEventListener('input', (event) => {
-      const value = event.target.value;
-      props.onChangeFilterText(value);
-      applyRenderedFilters(value, stateSelect ? stateSelect.value : initialFilterState, serverSelect ? serverSelect.value : initialFilterServer);
-    });
-    stateSelect?.addEventListener('change', (event) => {
-      const value = event.target.value;
-      props.onChangeFilterState(value);
-      applyRenderedFilters(textInput ? textInput.value : initialFilterText, value, serverSelect ? serverSelect.value : initialFilterServer);
-    });
-    serverSelect?.addEventListener('change', (event) => {
-      const value = event.target.value;
-      if (typeof props.onChangeFilterServer === 'function') {
-        props.onChangeFilterServer(value);
-      }
-      applyRenderedFilters(textInput ? textInput.value : initialFilterText, stateSelect ? stateSelect.value : initialFilterState, value);
-    });
-
-    container.querySelectorAll('[data-bot-id]').forEach((element) => {
-      element.addEventListener('click', () => {
-        props.onSelectBot(element.getAttribute('data-bot-id'));
+    if (!state || state.structureKey !== structureKey) {
+      textInput?.addEventListener('input', (event) => {
+        const value = event.target.value;
+        props.onChangeFilterText(value);
+        applyRenderedFilters(value, stateSelect ? stateSelect.value : initialFilterState, serverSelect ? serverSelect.value : initialFilterServer);
       });
-    });
+      stateSelect?.addEventListener('change', (event) => {
+        const value = event.target.value;
+        props.onChangeFilterState(value);
+        applyRenderedFilters(textInput ? textInput.value : initialFilterText, value, serverSelect ? serverSelect.value : initialFilterServer);
+      });
+      serverSelect?.addEventListener('change', (event) => {
+        const value = event.target.value;
+        if (typeof props.onChangeFilterServer === 'function') {
+          props.onChangeFilterServer(value);
+        }
+        applyRenderedFilters(textInput ? textInput.value : initialFilterText, stateSelect ? stateSelect.value : initialFilterState, value);
+      });
+
+      container.querySelectorAll('[data-bot-id]').forEach((element) => {
+        element.addEventListener('click', () => {
+          props.onSelectBot(element.getAttribute('data-bot-id'));
+        });
+      });
+    }
 
     if (textInput) {
       textInput.value = initialFilterText;
