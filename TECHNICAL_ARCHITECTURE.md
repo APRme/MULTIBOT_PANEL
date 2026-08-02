@@ -169,7 +169,18 @@ MULTIBOT
 
 ### 4.9 实例编辑器的混合形态
 
-实例编辑器现在同时保留三种输入方式：
+实例编辑器按四个标签组织：
+
+- `server`
+  - 实例目录、启动选项和共享 `server.json`
+- `defaults`
+  - 共享 `default.config.json`
+- `bot`
+  - 一键模板和当前实例 `config.json` 的结构化字段
+- `json`
+  - 三份配置文件的完整 JSON 文本
+
+它同时保留三种输入方式：
 
 - 结构化快捷表单
   - 适合改 `server.json`、`default.config.json`、`config.json` 里最常动的字段
@@ -182,9 +193,30 @@ MULTIBOT
 
 - 任何一层改动都会同步到同一份待保存草稿
 - 保存时仍然是按完整 JSON 文件替换
-- 页面刷新或后端轮询时，`app.js` 会尽量恢复当前草稿、滚动位置和焦点
+- 组件重绘或后端轮询时，`app.js` 会尽量恢复当前草稿、滚动位置和焦点
 
-### 4.10 `public/components/*`
+标签本身是组件级 UI 状态：
+
+- `instances.js` 用 `WeakMap` 按容器保存当前标签
+- 新建实例默认打开 `server`
+- 编辑实例默认打开 `bot`
+- 标签点击只切换当前编辑器面板，不进入全局 store
+- 一键模板触发编辑器重绘后，当前标签仍然保留
+- 标签实现 `tablist / tab / tabpanel` ARIA 关系，并支持方向键、`Home`、`End`
+
+### 4.10 `public/app.css`
+
+`app.css` 是无构建架构下的设计系统实现，集中定义：
+
+- 颜色、间距、圆角、阴影、字体和过渡令牌
+- Button、Input、Select、Switch、Badge、Dialog 等基础控件
+- 主工作区、日志工具栏、后端弹窗和实例编辑器布局
+- `1440px`、`1100px`、`720px` 响应式断点
+- `focus-visible` 和 `prefers-reduced-motion` 状态
+
+这套样式参考 Material Design 的层级与状态表达，但不引入 `@mui/material`、CSS-in-JS 或前端构建链。
+
+### 4.11 `public/components/*`
 
 组件目录下的文件都是“渲染器”：
 
@@ -449,6 +481,7 @@ MULTIBOT
 - reducer 更新逻辑
 - localStorage 持久化
 - 实例模板应用与撤销
+- 实例编辑器默认标签、ARIA 面板关系与非法标签回退
 
 ## 13. 适合继续扩展的方向
 

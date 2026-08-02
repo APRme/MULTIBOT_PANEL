@@ -21,6 +21,8 @@
 
 - 原生 `HTML / CSS / JavaScript` 单页应用
 - 独立 Node 静态服务，无前端构建步骤
+- Material-inspired 深色运维主题，不依赖 React、MUI 或打包器
+- 支持桌面、窄屏桌面与移动端响应式布局
 - 支持保存多个 `MULTIBOT` 后端配置
 - 浏览器本地保存后端 `baseUrl`、Bearer Token、UI 偏好、命令历史
 - 展示 bot 列表、bot 详情、运行状态、能力状态、锁状态、最近回复与日志
@@ -31,6 +33,7 @@
 - 支持实例列表、实例详情、创建、编辑、删除
 - 支持编辑 `server.json`、共享 `default.config.json`、实例 `config.json`
 - 支持实例编辑一键配置模板
+- 实例配置按“服务器 / 共享默认 / 当前实例 / 高级 JSON”四个标签组织
 
 ## 目录结构
 
@@ -168,6 +171,19 @@ node .\index.js
 - 页面渲染按区域独立进行：日志流只增量追加新行，bot 列表只更新变化卡片的徽章与摘要，隐藏的弹窗不参与渲染
 - 日志自动滚动只在用户本就位于底部附近时跟随，向上翻阅历史不会被强制拉回
 
+## 界面与交互
+
+当前界面参考 Material Design 的信息层级和交互状态，但仍保持原生静态页面架构：
+
+- 顶部状态栏集中显示当前后端、连接状态和主要入口
+- 运行状态、能力和日志级别使用统一的状态色与紧凑徽标
+- 二元配置使用 Switch，命令操作使用明确的按钮层级
+- 所有主要控件都有 `hover`、按下、`focus-visible` 和禁用状态
+- 窄屏下主布局、实例列表和配置网格会按断点重排，不依赖页面缩放
+- 系统启用“减少动态效果”时，界面会关闭非必要过渡动画
+
+这里没有安装 `@mui/material`。视觉升级只复用了 Material 风格的设计原则，继续保留无构建步骤、无框架的运行方式。
+
 ## 实例管理
 
 实例管理弹窗对应后端这些接口：
@@ -190,7 +206,22 @@ node .\index.js
 
 ## 编辑实例配置
 
-实例编辑器支持直接编辑三类 JSON：
+实例编辑器分成四个标签：
+
+- `服务器`：实例目录、保存后启动选项和共享 `server.json` 连接参数
+- `共享默认`：同一 `serverDir` 下共用的 `default.config.json`
+- `当前实例`：一键模板和当前实例 `config.json` 的常用图形配置
+- `高级 JSON`：三份配置文件的完整 JSON 文本
+
+新建实例默认打开“服务器”，编辑已有实例默认打开“当前实例”。模板触发局部重绘后仍会停留在当前标签，不会把用户跳回第一个标签。
+
+标签支持鼠标点击，也支持键盘操作：
+
+- `←` / `→`：切换到相邻标签
+- `Home`：切换到第一个标签
+- `End`：切换到最后一个标签
+
+实例编辑器最终仍然编辑三类 JSON：
 
 - `server.json`
 - `default.config.json`
@@ -236,7 +267,7 @@ node .\index.js
 
 - `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`
 - `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.*`、`capabilities.*`、`fish`、`attack.autoAttack`、`monitoring.enabled`、`recording.*`
-- `config.json`：常用运行时开关和能力项，下面仍保留完整 JSON 编辑区
+- `config.json`：常用运行时开关和能力项，完整内容保留在“高级 JSON”标签
 
 这层 GUI 不是新的数据源，只是帮你少手改 JSON；底层仍然按三份文件和后端合并规则生效。
 
@@ -302,6 +333,7 @@ node --test MULTIBOT_PANEL/test/sse-manager.test.js
 node --test MULTIBOT_PANEL/test/state-reducer.test.js
 node --test MULTIBOT_PANEL/test/storage.test.js
 node --test MULTIBOT_PANEL/test/static-server.test.js
+node --test MULTIBOT_PANEL/test/instances-component.test.js
 ```
 
 ## 适合谁看
