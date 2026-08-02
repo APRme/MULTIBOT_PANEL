@@ -78,28 +78,29 @@
       }
 
       container.innerHTML = `
-        <div class="panel-section stack">
+        <div class="panel-section stack logs-surface">
           <div class="toolbar">
-            <div class="toolbar-group">
-              <button class="button success small" data-action="start-bot">启动</button>
-              <button class="button warn small" data-action="stop-bot">停止</button>
-              <button class="button danger small" data-action="restart-bot">重启</button>
-              <button class="button small" data-action="refresh-bot">刷新</button>
+            <div class="toolbar-group bot-actions">
+              <button class="button success small" type="button" data-action="start-bot"><span class="button-icon" aria-hidden="true">▶</span>启动</button>
+              <button class="button warn small" type="button" data-action="stop-bot"><span class="button-icon" aria-hidden="true">■</span>停止</button>
+              <button class="button danger small" type="button" data-action="restart-bot"><span class="button-icon" aria-hidden="true">↻</span>重启</button>
+              <button class="button icon-button small" type="button" data-action="refresh-bot" aria-label="刷新当前 Bot" title="刷新当前 Bot"><span class="button-icon" aria-hidden="true">↻</span></button>
             </div>
-            <div class="toolbar-group">
-              <label class="row helper">
+            <div class="toolbar-group log-tools">
+              <label class="switch-control compact">
+                <span class="switch-copy">自动滚动</span>
                 <input type="checkbox" data-action="toggle-autoscroll" ${props.autoScrollLogs ? 'checked' : ''}>
-                自动滚动
+                <span class="switch-track" aria-hidden="true"></span>
               </label>
-              <select class="select" data-action="filter-level">
+              <select class="select" data-action="filter-level" aria-label="日志级别">
                 ${['all', 'info', 'warn', 'error', 'debug'].map((level) => `
                   <option value="${level}" ${props.logLevelFilter === level ? 'selected' : ''}>${LOG_LEVEL_LABELS[level] || level}</option>
                 `).join('')}
               </select>
-              <button class="button ghost small" data-action="clear-logs">清空</button>
+              <button class="button icon-button ghost small" type="button" data-action="clear-logs" aria-label="清空日志" title="清空日志"><span class="button-icon" aria-hidden="true">×</span></button>
             </div>
           </div>
-          <div class="helper">控制台日志</div>
+          <div class="logs-heading row space"><strong>实时控制台</strong><span class="helper">${logs.length} 条</span></div>
           <div class="log-view console" data-role="log-view" data-scroll-id="bot-logs" data-scroll-managed>${logs.length === 0
             ? '<div class="empty-state">暂无日志。</div>'
             : ''}</div>

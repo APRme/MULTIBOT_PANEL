@@ -15,7 +15,7 @@
 
   function buildBotChipsHtml(bot) {
     return `
-      <span class="chip mono">${formatters.escapeHtml(`${bot.host || '—'}:${bot.port || '—'}`)}</span>
+      <span class="chip mono">${formatters.escapeHtml(`${bot.host || '-'}:${bot.port || '-'}`)}</span>
       ${bot.lock && bot.lock.locked
         ? `<span class="chip">${formatters.escapeHtml(formatters.formatLockSummary(bot.lock))}</span>`
         : ''}
@@ -109,7 +109,7 @@
     const backend = props.backend;
 
     if (!backend) {
-      container.innerHTML = '<div class="empty-state">请先选择一个后端。</div>';
+      container.innerHTML = '<div class="empty-state empty-state-composed"><strong>尚未选择后端</strong><span>从顶部的“后端”入口选择或添加连接。</span></div>';
       containerStates.delete(container);
       return;
     }
@@ -139,16 +139,19 @@
 
     if (!state || state.structureKey !== structureKey) {
       container.innerHTML = `
-        <div class="panel-section stack">
-          <div class="row space">
-            <div class="stack">
+        <div class="panel-section stack bot-list-header">
+          <div class="row space section-heading">
+            <div class="stack section-heading-copy">
               <h2 class="title">Bot 列表</h2>
               <p class="subtitle" data-role="bot-count">${formatters.escapeHtml(backend.name)} · ${filteredBots.length}/${serverBotCount}</p>
             </div>
-            <button class="button primary small" data-action="refresh-backend">刷新</button>
+            <button class="button icon-button small" type="button" data-action="refresh-backend" aria-label="刷新 Bot 列表" title="刷新 Bot 列表"><span class="button-icon" aria-hidden="true">↻</span></button>
           </div>
-          <div class="stack">
-            <input class="input grow" data-filter="text" value="${formatters.escapeHtml(props.botFilterText || '')}" placeholder="筛选 bot / 用户名 / 主机 / 状态">
+          <div class="stack filter-surface">
+            <label class="label search-field">
+              <span class="sr-only">搜索 Bot</span>
+              <input class="input grow" data-filter="text" value="${formatters.escapeHtml(props.botFilterText || '')}" placeholder="筛选 Bot、用户名、主机或状态">
+            </label>
             <div class="filter-row">
               <select class="select" data-filter="server" aria-label="服务器筛选">
                 ${serverOptions.length === 0
@@ -165,7 +168,7 @@
             </div>
           </div>
         </div>
-        <div class="empty-state" data-role="bot-empty-state" ${filteredBots.length === 0 ? '' : 'hidden'}>没有匹配的 Bot。</div>
+        <div class="empty-state empty-state-composed" data-role="bot-empty-state" ${filteredBots.length === 0 ? '' : 'hidden'}><strong>没有匹配的 Bot</strong><span>调整服务器、状态或搜索条件。</span></div>
         <div class="list" data-scroll-id="bot-list" data-role="bot-list">
           ${filteredBots.length === 0
             ? ''
@@ -185,7 +188,7 @@
                   <div class="row space">
                     <div class="stack">
                       <strong class="mono" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
-                      <span class="subtitle" data-role="bot-username">${formatters.escapeHtml(bot.username || '—')}</span>
+                      <span class="subtitle" data-role="bot-username">${formatters.escapeHtml(bot.username || '-')}</span>
                     </div>
                     <span class="badge ${formatters.formatStateClass(bot.state)}" data-role="bot-state-badge">${formatters.escapeHtml(formatters.formatStateText(bot.state))}</span>
                   </div>
@@ -216,7 +219,7 @@
       }
       const username = card.querySelector('[data-role="bot-username"]');
       if (username) {
-        username.textContent = bot.username || '—';
+        username.textContent = bot.username || '-';
       }
       const badge = card.querySelector('[data-role="bot-state-badge"]');
       if (badge) {

@@ -37,18 +37,16 @@
     const commandDraft = String(props.commandDraft || '');
 
     container.innerHTML = `
-      <div class="panel-section stack">
-        <div class="row space">
+      <div class="panel-section stack command-surface">
+        <div class="stack section-heading-copy">
           <strong>控制台输入</strong>
-          <span class="helper">以 "/" 开头执行控制命令，其余文本直接发送聊天</span>
+          <span class="helper">以 "/" 开头执行控制命令，其余文本直接发送聊天。</span>
         </div>
-        <form class="stack" data-role="command-form">
-          <input class="input mono" name="command" data-role="command-input" value="${formatters.escapeHtml(commandDraft)}" placeholder="例如：/health 或 你好" autocomplete="off">
-          <div class="row wrap">
-            <button class="button primary" type="submit" ${!props.canSend ? 'disabled' : ''}>发送</button>
-          </div>
+        <form class="command-form" data-role="command-form">
+          <input class="input mono" name="command" data-role="command-input" value="${formatters.escapeHtml(commandDraft)}" placeholder="例如：/health 或 你好" autocomplete="off" aria-label="控制台输入">
+          <button class="button primary command-submit" type="submit" ${!props.canSend ? 'disabled' : ''}><span class="button-icon" aria-hidden="true">➜</span>发送</button>
         </form>
-        <div class="stack">
+        <div class="stack command-history">
           <span class="helper">最近输入</span>
           <div class="chips">
             ${(props.commandHistory || []).length === 0
@@ -58,7 +56,7 @@
                 `).join('')}
           </div>
         </div>
-        <div class="stack">
+        <div class="stack command-result">
           <span class="helper">最近回复</span>
           ${renderLastResult(result)}
         </div>

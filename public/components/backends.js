@@ -11,10 +11,13 @@
     const tokenInputType = editor.showToken ? 'text' : 'password';
 
     return `
-      <div class="panel-section stack">
-        <div class="row space">
-          <strong>${editor.mode === 'edit' ? '编辑后端' : '新增后端'}</strong>
-          <button class="button ghost" data-action="cancel-editor">取消</button>
+      <div class="panel-section stack backend-editor">
+        <div class="row space section-heading">
+          <div class="stack section-heading-copy">
+            <strong>${editor.mode === 'edit' ? '编辑后端' : '新增后端'}</strong>
+            <span class="helper">连接信息仅保存在当前浏览器。</span>
+          </div>
+          <button class="button ghost small" type="button" data-action="cancel-editor">取消</button>
         </div>
         ${editor.error ? `<div class="message-banner">${formatters.escapeHtml(editor.error)}</div>` : ''}
         <label class="label">
@@ -29,17 +32,19 @@
           <span>Token</span>
           <input class="input mono" type="${tokenInputType}" data-field="token" value="${formatters.escapeHtml(draft.token || '')}" placeholder="Bearer Token">
         </label>
-        <label class="row helper">
+        <label class="switch-control compact">
+          <span class="switch-copy">显示 Token</span>
           <input type="checkbox" data-action="toggle-token" ${editor.showToken ? 'checked' : ''}>
-          显示 Token
+          <span class="switch-track" aria-hidden="true"></span>
         </label>
-        <label class="row helper">
+        <label class="switch-control">
+          <span class="switch-copy"><strong>启用后端</strong><span class="helper">参与连接、SSE 和周期刷新</span></span>
           <input type="checkbox" data-field="enabled" ${draft.enabled !== false ? 'checked' : ''}>
-          启用后端并参与自动刷新
+          <span class="switch-track" aria-hidden="true"></span>
         </label>
-        <div class="row wrap">
-          <button class="button primary" data-action="save-editor">保存</button>
-          <button class="button" data-action="test-backend">测试连接</button>
+        <div class="row wrap form-actions">
+          <button class="button primary" type="button" data-action="save-editor"><span class="button-icon" aria-hidden="true">✓</span>保存</button>
+          <button class="button" type="button" data-action="test-backend"><span class="button-icon" aria-hidden="true">↻</span>测试连接</button>
         </div>
       </div>
     `;
@@ -49,22 +54,22 @@
     const backends = props.backends || [];
 
     container.innerHTML = `
-      <div class="panel-section row space">
-        <div class="stack">
+      <div class="panel-section row space modal-heading">
+        <div class="stack section-heading-copy">
           <h2 class="title">后端管理</h2>
           <p class="subtitle">管理多个 MULTIBOT 后端</p>
         </div>
         <div class="row wrap">
-          <button class="button primary" data-action="add-backend">新增</button>
-          <button class="button ghost" data-action="close-modal">关闭</button>
+          <button class="button primary" type="button" data-action="add-backend"><span class="button-icon" aria-hidden="true">＋</span>新增</button>
+          <button class="button icon-button ghost" type="button" data-action="close-modal" aria-label="关闭后端管理" title="关闭"><span class="button-icon" aria-hidden="true">×</span></button>
         </div>
       </div>
       ${renderBackendEditor(props.editor)}
       <div class="list">
         ${backends.length === 0
-          ? '<div class="empty-state">还没有后端配置，点击“新增”开始。</div>'
+          ? '<div class="empty-state empty-state-composed"><strong>还没有后端配置</strong><span>点击“新增”添加第一个 MULTIBOT 连接。</span></div>'
           : backends.map((backend) => `
-              <div class="list-card ${props.selectedBackendId === backend.id ? 'selected' : ''}" data-backend-id="${formatters.escapeHtml(backend.id)}">
+              <div class="list-card backend-card ${props.selectedBackendId === backend.id ? 'selected' : ''}" data-backend-id="${formatters.escapeHtml(backend.id)}">
                 <div class="row space">
                   <div class="stack">
                     <strong>${formatters.escapeHtml(backend.name)}</strong>
@@ -78,12 +83,12 @@
                   <span class="chip">自动刷新：${backend.enabled !== false ? '开' : '关'}</span>
                 </div>
                 <div class="helper">${formatters.escapeHtml(formatters.summarizeError(backend.lastError))}</div>
-                <div class="row wrap">
+                <div class="row wrap backend-card-actions">
                   <button class="button ${backend.enabled !== false ? 'warn' : 'success'}" data-action="toggle-enabled" data-backend-id="${formatters.escapeHtml(backend.id)}">
                     ${backend.enabled !== false ? '禁用' : '启用'}
                   </button>
-                  <button class="button" data-action="edit-backend" data-backend-id="${formatters.escapeHtml(backend.id)}">编辑</button>
-                  <button class="button danger" data-action="delete-backend" data-backend-id="${formatters.escapeHtml(backend.id)}">删除</button>
+                  <button class="button" data-action="edit-backend" data-backend-id="${formatters.escapeHtml(backend.id)}"><span class="button-icon" aria-hidden="true">✎</span>编辑</button>
+                  <button class="button danger" data-action="delete-backend" data-backend-id="${formatters.escapeHtml(backend.id)}"><span class="button-icon" aria-hidden="true">×</span>删除</button>
                 </div>
               </div>
             `).join('')}
