@@ -1,9 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 global.MultibotPanel = {
   formatters: {
-    formatStateText(value) { return value; }
+    escapeHtml(value) { return String(value); },
+    formatLockSummary() { return 'locked'; },
+    formatStateText(value) { return value; },
+    summarizeError(value) { return String(value); }
   }
 };
 
@@ -60,4 +65,22 @@ test('instance directories fill missing grouping fields from older bot summaries
   assert.equal(botList.hasMissingServerDirectories(resolved), false);
   assert.deepEqual(botList.getServerOptions(resolved), ['alpha', 'beta']);
   assert.equal(botList.getBotDisplayName(resolved[0], 'alpha'), 'alpha-bot');
+});
+
+test('bot list metadata omits connection details but keeps actionable warnings', () => {
+  const html = botList.buildBotChipsHtml({
+    host: 'a.example',
+    port: 25565,
+    lock: { locked: true },
+    lastError: 'authentication failed'
+  });
+
+  assert.doesNotMatch(html, /a\.example|25565/);
+  assert.match(html, /locked/);
+  assert.match(html, /authentication failed/);
+});
+
+test('hidden elements override component display styles', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.css'), 'utf8');
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
 });

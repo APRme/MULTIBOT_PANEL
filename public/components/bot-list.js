@@ -14,15 +14,14 @@
   const containerStates = new WeakMap();
 
   function buildBotChipsHtml(bot) {
-    return `
-      <span class="chip mono">${formatters.escapeHtml(`${bot.host || '-'}:${bot.port || '-'}`)}</span>
-      ${bot.lock && bot.lock.locked
-        ? `<span class="chip">${formatters.escapeHtml(formatters.formatLockSummary(bot.lock))}</span>`
-        : ''}
-      ${bot.lastFailure || bot.lastError || bot.lastKick
-        ? `<span class="chip">${formatters.escapeHtml(formatters.summarizeError(bot.lastFailure || bot.lastError || bot.lastKick))}</span>`
-        : ''}
-    `;
+    const chips = [];
+    if (bot.lock && bot.lock.locked) {
+      chips.push(`<span class="chip">${formatters.escapeHtml(formatters.formatLockSummary(bot.lock))}</span>`);
+    }
+    if (bot.lastFailure || bot.lastError || bot.lastKick) {
+      chips.push(`<span class="chip">${formatters.escapeHtml(formatters.summarizeError(bot.lastFailure || bot.lastError || bot.lastKick))}</span>`);
+    }
+    return chips.join('');
   }
 
   function getBotServerDir(bot) {
@@ -188,11 +187,10 @@
                   <div class="row space">
                     <div class="stack">
                       <strong class="mono" data-role="bot-display-name">${formatters.escapeHtml(getBotDisplayName(bot, initialFilterServer))}</strong>
-                      <span class="subtitle" data-role="bot-username">${formatters.escapeHtml(bot.username || '-')}</span>
                     </div>
                     <span class="badge ${formatters.formatStateClass(bot.state)}" data-role="bot-state-badge">${formatters.escapeHtml(formatters.formatStateText(bot.state))}</span>
                   </div>
-                  <div class="row wrap" data-role="bot-chips">
+                  <div class="row wrap" data-role="bot-chips" ${buildBotChipsHtml(bot) ? '' : 'hidden'}>
                     ${buildBotChipsHtml(bot)}
                   </div>
                 </div>
@@ -217,10 +215,6 @@
       if (displayName) {
         displayName.textContent = getBotDisplayName(bot, initialFilterServer);
       }
-      const username = card.querySelector('[data-role="bot-username"]');
-      if (username) {
-        username.textContent = bot.username || '-';
-      }
       const badge = card.querySelector('[data-role="bot-state-badge"]');
       if (badge) {
         badge.className = `badge ${formatters.formatStateClass(bot.state)}`;
@@ -228,7 +222,9 @@
       }
       const chips = card.querySelector('[data-role="bot-chips"]');
       if (chips) {
-        chips.innerHTML = buildBotChipsHtml(bot);
+        const chipsHtml = buildBotChipsHtml(bot);
+        chips.innerHTML = chipsHtml;
+        chips.hidden = !chipsHtml;
       }
 
       card.setAttribute('data-bot-search', [
@@ -318,6 +314,7 @@
 
   const api = {
     applyFilters,
+    buildBotChipsHtml,
     getBotServerDir,
     getBotDisplayName,
     getServerOptions,

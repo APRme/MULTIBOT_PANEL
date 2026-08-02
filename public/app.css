@@ -354,6 +354,10 @@ textarea:focus-visible,
   min-width: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .muted {
   color: var(--muted);
 }
