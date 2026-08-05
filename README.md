@@ -266,11 +266,13 @@ node .\index.js
 
 实例编辑器里现在还提供了一层“快速配置”表单，覆盖这些常用项：
 
-- `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`
+- `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`，以及多级重连开关（`restartDelayScheduleMs` 分级延迟数组 + `restartDelayScheduleRepeatLast` 耗尽后是否重复最后一级）
 - `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.*`、`capabilities.*`、`fish`、`attack.autoAttack`、`monitoring.enabled`、`recording.*`
 - `config.json`：常用运行时开关和能力项，完整内容保留在“高级 JSON”标签
 
 这层 GUI 不是新的数据源，只是帮你少手改 JSON；底层仍然按三份文件和后端合并规则生效。
+
+多级重连与旧版固定延迟重连互斥：开启“多级重连”开关后，面板会写入默认分级延迟数组并移除 `restartDelayMs`；关闭开关则移除 `restartDelayScheduleMs` / `restartDelayScheduleRepeatLast`。`restartOnDisconnect` 仍是总开关，`restartJitterMs` 两种模式共用。
 
 ## 与后端的边界
 

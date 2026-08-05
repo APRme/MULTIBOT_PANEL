@@ -272,6 +272,58 @@
     `;
   }
 
+  function renderJsonNumberListField(fieldRoot, pathText, label, values, helperText = '') {
+    const listValue = Array.isArray(values) ? values.join('\n') : '';
+    return `
+      <label class="label">
+        <span>${formatters.escapeHtml(label)}</span>
+        <textarea
+          class="textarea mono instance-editor-textarea"
+          data-json-field="${formatters.escapeHtml(fieldRoot)}"
+          data-json-path="${formatters.escapeHtml(pathText)}"
+          data-json-type="number-list"
+          spellcheck="false">${formatters.escapeHtml(listValue)}</textarea>
+        ${helperText ? `<span class="helper">${formatters.escapeHtml(helperText)}</span>` : ''}
+      </label>
+    `;
+  }
+
+  const DEFAULT_RECONNECT_SCHEDULE_MS = [60000, 300000, 600000, 900000, 1800000, 3600000, 7200000];
+
+  function parseNumberListText(text) {
+    const numbers = Array.from(new Set(
+      String(text || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => Number(line))
+        .filter((number) => Number.isInteger(number) && number >= 0)
+    ));
+    return numbers.length > 0 ? numbers : undefined;
+  }
+
+  function applyReconnectModeToggle(serverJsonText, enabled) {
+    const nextObject = cloneJsonValue(safeParseJsonObject(serverJsonText));
+    const prefix = isPlainObject(nextObject && nextObject.connection) ? 'connection.' : '';
+    const schedulePath = `${prefix}restartDelayScheduleMs`;
+    const repeatLastPath = `${prefix}restartDelayScheduleRepeatLast`;
+    const fixedDelayPath = `${prefix}restartDelayMs`;
+
+    if (enabled) {
+      const currentSchedule = getJsonPathValue(nextObject, schedulePath);
+      const schedule = Array.isArray(currentSchedule) && currentSchedule.length > 0
+        ? currentSchedule
+        : DEFAULT_RECONNECT_SCHEDULE_MS;
+      setJsonPathValue(nextObject, schedulePath, schedule);
+      deleteJsonPathValue(nextObject, fixedDelayPath);
+    } else {
+      deleteJsonPathValue(nextObject, schedulePath);
+      deleteJsonPathValue(nextObject, repeatLastPath);
+    }
+
+    return stringifyJson(nextObject);
+  }
+
   function getInstanceKey(serverDir, botDir) {
     return `${String(serverDir || '').trim()}/${String(botDir || '').trim()}`;
   }
@@ -386,6 +438,8 @@
     const serverObject = safeParseJsonObject(draft.serverJson);
     const defaultBotObject = safeParseJsonObject(draft.defaultBotJson);
     const botObject = safeParseJsonObject(draft.botJson);
+    const reconnectScheduleValues = getServerJsonFieldValue(serverObject, 'restartDelayScheduleMs', []);
+    const multiLevelReconnect = Array.isArray(reconnectScheduleValues) && reconnectScheduleValues.length > 0;
     const activeTab = normalizeEditorTab(activeTabId, editor && editor.mode);
 
     return `
@@ -486,9 +540,24 @@
             ], '登录时请求的视距')}
             ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'disableChatSigning'), '关闭聊天签名', getServerJsonFieldValue(serverObject, 'disableChatSigning', true) !== false, '兼容旧服聊天')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'checkTimeoutInterval'), 'KeepAlive 超时', getServerJsonFieldValue(serverObject, 'checkTimeoutInterval', 30000) ?? 30000, '毫秒', '1')}
-            ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'restartOnDisconnect'), '断线自动重连', getServerJsonFieldValue(serverObject, 'restartOnDisconnect', true) !== false, '断线后自动拉起')}
-            ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartDelayMs'), '重连延迟', getServerJsonFieldValue(serverObject, 'restartDelayMs', 60000) ?? 60000, '毫秒', '1')}
-            ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartJitterMs'), '重连抖动', getServerJsonFieldValue(serverObject, 'restartJitterMs', 120000) ?? 120000, '毫秒', '1')}
+            ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'restartOnDisconnect'), '断线自动重连', getServerJsonFieldValue(serverObject, 'restartOnDisconnect', true) !== false, '总开关：关闭后不自动重连')}
+            <label class="switch-control">
+              <span class="switch-copy">
+                <strong>多级重连</strong>
+                <span class="helper">用分级延迟数组替代固定延迟，与固定重连延迟互斥</span>
+              </span>
+              <input type="checkbox" data-reconnect-mode="multi" aria-label="多级重连" ${multiLevelReconnect ? 'checked' : ''}>
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+            ${multiLevelReconnect
+              ? `
+                ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'restartDelayScheduleRepeatLast'), '分级耗尽后重复最后一级', getServerJsonFieldValue(serverObject, 'restartDelayScheduleRepeatLast', true) !== false, '关闭后数组用尽即停止自动重连')}
+                ${renderJsonNumberListField('serverJson', getServerJsonFieldPath(serverObject, 'restartDelayScheduleMs'), '分级延迟（毫秒）', reconnectScheduleValues, '一行一个毫秒数；实际延迟 = 当前级 + restartJitterMs 随机抖动')}
+              `
+              : `
+                ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartDelayMs'), '固定重连延迟', getServerJsonFieldValue(serverObject, 'restartDelayMs', 60000) ?? 60000, '未启用多级重连时生效', '1')}
+              `}
+            ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartJitterMs'), '重连抖动', getServerJsonFieldValue(serverObject, 'restartJitterMs', 120000) ?? 120000, '两种模式共用', '1')}
             </div>
           </div>
         </section>
@@ -845,6 +914,8 @@
               .map((line) => line.trim())
               .filter(Boolean)
           ));
+        } else if (fieldType === 'number-list') {
+          value = parseNumberListText(element.value);
         } else {
           const rawValue = String(element.value || '');
           value = rawValue.trim() ? rawValue : undefined;
@@ -862,6 +933,19 @@
         props.onUpdateEditorField(fieldRoot, nextJsonText);
       });
     });
+
+    container.querySelectorAll('[data-reconnect-mode]').forEach((element) => {
+      element.addEventListener('change', () => {
+        const fieldRoot = 'serverJson';
+        const currentJsonText = editor && editor.draft && editor.draft[fieldRoot] || '';
+        const nextJsonText = applyReconnectModeToggle(currentJsonText, element.checked);
+        const jsonTextarea = container.querySelector(`[data-editor-field="${fieldRoot}"]`);
+        if (jsonTextarea) {
+          jsonTextarea.value = nextJsonText;
+        }
+        props.onUpdateEditorField(fieldRoot, nextJsonText);
+      });
+    });
   }
 
   const api = {
@@ -869,6 +953,8 @@
     normalizeEditorTab,
     applyEditorTab,
     renderEditor,
+    parseNumberListText,
+    applyReconnectModeToggle,
     getInstanceKey,
     renderInstancesPanel
   };
