@@ -289,7 +289,7 @@
 
     grid.addEventListener('dragstart', (event) => {
       const slotEl = event.target && event.target.closest
-        ? event.target.closest('[data-slot]')
+        ? event.target.closest('.inv-slot')
         : null;
       if (!slotEl) {
         event.preventDefault();
@@ -307,7 +307,7 @@
 
     grid.addEventListener('dragover', (event) => {
       const slotEl = event.target && event.target.closest
-        ? event.target.closest('[data-slot]')
+        ? event.target.closest('.inv-slot')
         : null;
       if (!slotEl) return;
       event.preventDefault();
@@ -316,7 +316,7 @@
 
     grid.addEventListener('drop', (event) => {
       const slotEl = event.target && event.target.closest
-        ? event.target.closest('[data-slot]')
+        ? event.target.closest('.inv-slot')
         : null;
       if (!slotEl) return;
       event.preventDefault();
