@@ -188,16 +188,16 @@ test('unknown windows with matching assets fall back to decorated grid', () => {
 test('inventory slots follow the prismarine slot order table', () => {
   const layout = inventoryPanel.SLOT_LAYOUTS.inventory;
   const inv = { inventoryStart: 9, inventoryEnd: 46 };
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(0, layout, inv), { x: 161.5, y: 35.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(1, layout, inv), { x: 105.5, y: 25.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(4, layout, inv), { x: 123.5, y: 43.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(5, layout, inv), { x: 15.5, y: 15.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(8, layout, inv), { x: 15.5, y: 69.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(9, layout, inv), { x: 15.5, y: 91.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(17, layout, inv), { x: 159.5, y: 91.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(35, layout, inv), { x: 159.5, y: 127.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(36, layout, inv), { x: 15.5, y: 149.5, w: 18, h: 18 });
-  assert.deepEqual(inventoryPanel.getSlotPixelPosition(44, layout, inv), { x: 159.5, y: 149.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(0, layout, inv), { x: 152.5, y: 26.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(1, layout, inv), { x: 96.5, y: 16.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(4, layout, inv), { x: 114.5, y: 34.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(5, layout, inv), { x: 6.5, y: 6.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(8, layout, inv), { x: 6.5, y: 60.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(9, layout, inv), { x: 6.5, y: 82.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(17, layout, inv), { x: 150.5, y: 82.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(35, layout, inv), { x: 150.5, y: 118.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(36, layout, inv), { x: 6.5, y: 140.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(44, layout, inv), { x: 150.5, y: 140.5, w: 18, h: 18 });
   assert.equal(inventoryPanel.getSlotPixelPosition(45, layout, inv), null);
 });
 

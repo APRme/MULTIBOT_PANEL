@@ -33,18 +33,18 @@
   const SLOT_LAYOUTS = {
     chest: { image: 'chest.png', width: 176, height: 167, containerRows: 3, containerY: 17, inventoryY: 83, hotbarY: 145 },
     'large-chest': { image: 'generic_54.png', width: 176, height: 222, containerRows: 6, containerY: 17, inventoryY: 137, hotbarY: 199 },
-    // 物品栏：槽位分布不规则，用显式坐标表（prismarine 槽位顺序，1.21.11 纹理实测中心坐标）
+    // 物品栏：槽位分布不规则，用显式坐标表（prismarine 槽位顺序，1.21.11 纹理实测中心坐标 -9 转左上角）
     // 0=合成结果 1-4=合成2x2 5-8=盔甲 9-35=背包 36-44=快捷栏；45=副手（纹理无槽位，不渲染）
     inventory: {
       image: 'inventory.png',
       width: 176,
       height: 166,
       sections: [
-        { start: 0, end: 1, xs: [161.5], ys: [35.5] },
-        { start: 1, end: 5, xs: [105.5, 123.5, 105.5, 123.5], ys: [25.5, 25.5, 43.5, 43.5] },
-        { start: 5, end: 9, xs: [15.5, 15.5, 15.5, 15.5], ys: [15.5, 33.5, 51.5, 69.5] },
-        { start: 9, end: 36, gridX: 15.5, gridY: 91.5, cols: 9, step: 18 },
-        { start: 36, end: 45, gridX: 15.5, gridY: 149.5, cols: 9, step: 18 }
+        { start: 0, end: 1, xs: [152.5], ys: [26.5] },
+        { start: 1, end: 5, xs: [96.5, 114.5, 96.5, 114.5], ys: [16.5, 16.5, 34.5, 34.5] },
+        { start: 5, end: 9, xs: [6.5, 6.5, 6.5, 6.5], ys: [6.5, 24.5, 42.5, 60.5] },
+        { start: 9, end: 36, gridX: 6.5, gridY: 82.5, cols: 9, step: 18 },
+        { start: 36, end: 45, gridX: 6.5, gridY: 140.5, cols: 9, step: 18 }
       ]
     }
   };
