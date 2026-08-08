@@ -198,7 +198,7 @@ test('inventory slots follow the prismarine slot order table', () => {
   assert.deepEqual(inventoryPanel.getSlotPixelPosition(35, layout, inv), { x: 150.5, y: 118.5, w: 18, h: 18 });
   assert.deepEqual(inventoryPanel.getSlotPixelPosition(36, layout, inv), { x: 6.5, y: 140.5, w: 18, h: 18 });
   assert.deepEqual(inventoryPanel.getSlotPixelPosition(44, layout, inv), { x: 150.5, y: 140.5, w: 18, h: 18 });
-  assert.equal(inventoryPanel.getSlotPixelPosition(45, layout, inv), null);
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(45, layout, inv), { x: 76.5, y: 61.5, w: 18, h: 18 });
 });
 
 test('inventory window renders the exact-aligned background container', () => {
@@ -214,5 +214,5 @@ test('inventory window renders the exact-aligned background container', () => {
   assert.match(html, /background-image:url\('assets\/gui\/inventory\.png'\)/);
   assert.match(html, /aspect-ratio:176\/166/);
   assert.match(html, /data-slot="0"/);
-  assert.doesNotMatch(html, /data-slot="45"/);
+  assert.match(html, /data-slot="45"/);
 });

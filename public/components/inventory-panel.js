@@ -34,7 +34,7 @@
     chest: { image: 'chest.png', width: 176, height: 167, containerRows: 3, containerY: 17, inventoryY: 83, hotbarY: 145 },
     'large-chest': { image: 'generic_54.png', width: 176, height: 222, containerRows: 6, containerY: 17, inventoryY: 137, hotbarY: 199 },
     // 物品栏：槽位分布不规则，用显式坐标表（prismarine 槽位顺序，1.21.11 纹理实测中心坐标 -9 转左上角）
-    // 0=合成结果 1-4=合成2x2 5-8=盔甲 9-35=背包 36-44=快捷栏；45=副手（纹理无槽位，不渲染）
+    // 0=合成结果 1-4=合成2x2 5-8=盔甲 9-35=背包 36-44=快捷栏 45=副手
     inventory: {
       image: 'inventory.png',
       width: 176,
@@ -44,7 +44,8 @@
         { start: 1, end: 5, xs: [96.5, 114.5, 96.5, 114.5], ys: [16.5, 16.5, 34.5, 34.5] },
         { start: 5, end: 9, xs: [6.5, 6.5, 6.5, 6.5], ys: [6.5, 24.5, 42.5, 60.5] },
         { start: 9, end: 36, gridX: 6.5, gridY: 82.5, cols: 9, step: 18 },
-        { start: 36, end: 45, gridX: 6.5, gridY: 140.5, cols: 9, step: 18 }
+        { start: 36, end: 45, gridX: 6.5, gridY: 140.5, cols: 9, step: 18 },
+        { start: 45, end: 46, xs: [76.5], ys: [61.5] }
       ]
     }
   };
