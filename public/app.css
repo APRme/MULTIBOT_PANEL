@@ -1589,7 +1589,8 @@ input[type="checkbox"] {
 
 .inv-bg .inv-slot-empty {
   opacity: 1;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .inv-bg .inv-slot:hover {
@@ -1598,7 +1599,7 @@ input[type="checkbox"] {
 }
 
 .inv-bg .inv-slot-empty:hover {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .inv-grid-with-bg {
