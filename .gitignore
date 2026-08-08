@@ -1,2 +1,5 @@
 # Reasonix 自动生成的桌面会话元数据
 .reasonix/
+
+# Mojang 原版 GUI 纹理素材（个人自用，不入库）
+public/assets/
