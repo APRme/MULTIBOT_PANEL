@@ -16,11 +16,14 @@
     return WINDOW_LABELS[name] || name;
   }
 
+  const MAX_SLOT_RENDER = 200;
+
   function getSlotItems(inventory) {
     if (!inventory) return [];
     const start = Number.isInteger(inventory.inventoryStart) ? inventory.inventoryStart : 0;
     const end = Number.isInteger(inventory.inventoryEnd) ? inventory.inventoryEnd : 0;
-    const total = Math.max(end, start);
+    // 上限保护：异常 window 数据不应生成海量空槽 DOM
+    const total = Math.min(Math.max(end, start), MAX_SLOT_RENDER);
     const items = [];
     for (let slot = 0; slot < total; slot += 1) {
       items.push({

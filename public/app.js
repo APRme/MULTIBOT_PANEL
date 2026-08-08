@@ -911,12 +911,14 @@
       const backend = state.backends.byId[backendId];
       if (!backend || !botId) return;
 
+      const startedAt = Date.now();
       try {
         const response = await apiClient.getInventory(backend, botId);
         store.dispatch({
           type: 'SET_BOT_INVENTORY',
           backendId,
           botId,
+          updatedAt: startedAt,
           window: (response && response.window) || null
         });
       } catch (error) {
@@ -1052,6 +1054,7 @@
             type: 'SET_BOT_INVENTORY',
             backendId,
             botId: data.botId,
+            updatedAt: Number.isFinite(data.timestamp) ? data.timestamp : Date.now(),
             window: data.window
           });
         } else if (data.type === 'patch') {
@@ -1059,6 +1062,7 @@
             type: 'PATCH_BOT_INVENTORY',
             backendId,
             botId: data.botId,
+            updatedAt: Number.isFinite(data.timestamp) ? data.timestamp : Date.now(),
             windowId: data.windowId,
             slots: data.slots
           });

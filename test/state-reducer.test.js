@@ -783,3 +783,100 @@ test('inventory survives backend bot list refreshes', () => {
   assert.ok(inventory);
   assert.equal(inventory.slots['8'].name, 'minecraft:diamond');
 });
+
+test('stale snapshots do not overwrite newer patches', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    updatedAt: 1000,
+    window: { id: 7, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [{ slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 64, metadata: 0 }] }
+  });
+  // patch 在快照请求发出后到达（updatedAt 更大）
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    updatedAt: 1200,
+    windowId: 7,
+    slots: { 2: { slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 63, metadata: 0 } }
+  });
+  assert.equal(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory.slots['2'].count, 63);
+
+  // 晚到的旧快照（发起于 1100，反映旧状态）不应覆盖本地更新的 count=63
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    updatedAt: 1100,
+    window: { id: 7, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [{ slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 64, metadata: 0 }] }
+  });
+  assert.equal(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory.slots['2'].count, 63);
+
+  // 更新的快照（反映最新状态）仍可覆盖
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    updatedAt: 1300,
+    window: { id: 7, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [{ slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 60, metadata: 0 }] }
+  });
+  assert.equal(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory.slots['2'].count, 60);
+});
+
+test('patches apply when the window id is missing from the snapshot', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: { id: null, name: 'inventory', supported: true, inventoryStart: 36, inventoryEnd: 45, slots: [{ slot: 8, name: 'minecraft:diamond', displayName: '钻石', count: 1, metadata: 0 }] }
+  });
+
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    windowId: 3,
+    slots: { 8: { slot: 8, name: 'minecraft:diamond', displayName: '钻石', count: 0, metadata: 0 }, 9: null }
+  });
+
+  const inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.slots['8'].count, 0);
+});
+
+test('inventory events do not recreate bots that are not in the list', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'ghost-bot',
+    window: { id: 7, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [] }
+  });
+
+  assert.equal(state.backends.byId['backend-1'].bots.byId['ghost-bot'], undefined);
+  assert.deepEqual(state.backends.byId['backend-1'].bots.allIds, []);
+});

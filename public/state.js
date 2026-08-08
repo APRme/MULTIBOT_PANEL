@@ -156,7 +156,8 @@
     if (!inventory || !patch || !patch.slots || typeof patch.slots !== 'object') {
       return inventory;
     }
-    if (patch.windowId != null && inventory.id !== patch.windowId) {
+    // 两侧都有明确 id 时才校验窗口一致性；id 为空（如背包快照缺失 id）时不做匹配，避免误丢全部 patch
+    if (inventory.id != null && patch.windowId != null && Number(inventory.id) !== Number(patch.windowId)) {
       return inventory;
     }
 
@@ -395,9 +396,16 @@
         if (patched === existingBot.inventory || deepEqual(patched, existingBot.inventory)) {
           return state;
         }
+        const nextUpdatedAt = Math.max(
+          existingBot.inventory.updatedAt || 0,
+          Number.isFinite(action.updatedAt) ? action.updatedAt : 0
+        );
         backend.bots.byId[botId] = {
           ...existingBot,
-          inventory: patched
+          inventory: {
+            ...patched,
+            updatedAt: nextUpdatedAt
+          }
         };
         return nextState;
       }
@@ -407,8 +415,22 @@
         if (!backend) return state;
         const botId = action.botId;
         if (!botId) return state;
-        const existingBot = backend.bots.byId[botId] || mergeBotSummary(null, { id: botId });
+        const existingBot = backend.bots.byId[botId];
+        // 事件只作用于已存在的 bot：避免迟到的 inventory 事件凭空把已删除/未加载的 bot 加回列表
+        if (!existingBot) return state;
+        // 快照竞态保护：本地已有更新（patch/新窗口）晚于该快照时，跳过过期快照的整体覆盖
+        if (
+          existingBot.inventory &&
+          Number.isFinite(existingBot.inventory.updatedAt) &&
+          Number.isFinite(action.updatedAt) &&
+          existingBot.inventory.updatedAt > action.updatedAt
+        ) {
+          return state;
+        }
         const inventory = normalizeInventoryWindow(action.window);
+        if (inventory) {
+          inventory.updatedAt = Number.isFinite(action.updatedAt) ? action.updatedAt : null;
+        }
         if (deepEqual(existingBot.inventory || null, inventory)) {
           return state;
         }
@@ -416,9 +438,6 @@
           ...existingBot,
           inventory
         };
-        if (!backend.bots.allIds.includes(botId)) {
-          backend.bots.allIds.push(botId);
-        }
         return nextState;
       }
 
