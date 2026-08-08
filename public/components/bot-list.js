@@ -50,11 +50,6 @@
     return MINECRAFT_USERNAME_PATTERN.test(username) ? username : '';
   }
 
-  function getBotAvatarUrl(bot) {
-    const avatarName = getBotAvatarName(bot);
-    return avatarName ? `https://mc-heads.net/avatar/${encodeURIComponent(avatarName)}/40` : '';
-  }
-
   function getBotAvatarFallback(bot, selectedServerDir) {
     const label = getBotAvatarName(bot) || getBotDisplayName(bot, selectedServerDir);
     return Array.from(String(label || '?').trim())[0]?.toUpperCase() || '?';
@@ -62,26 +57,48 @@
 
   function buildBotAvatarHtml(bot, selectedServerDir) {
     const avatarName = getBotAvatarName(bot);
-    const avatarUrl = getBotAvatarUrl(bot);
     return `
       <span class="bot-avatar" data-role="bot-avatar"${avatarName ? ` title="${formatters.escapeHtml(`${avatarName} 的皮肤头像`)}"` : ''} aria-hidden="true">
         <span class="bot-avatar-fallback">${formatters.escapeHtml(getBotAvatarFallback(bot, selectedServerDir))}</span>
-        ${avatarUrl
-          ? `<img class="bot-avatar-image" data-role="bot-avatar-image" src="${formatters.escapeHtml(avatarUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
-          : ''}
       </span>
     `;
   }
 
-  function bindBotAvatarImages(container) {
-    container.querySelectorAll('[data-role="bot-avatar-image"]').forEach((image) => {
-      const hideBrokenImage = () => {
-        image.hidden = true;
-      };
-      image.addEventListener('error', hideBrokenImage, { once: true });
-      if (image.complete && image.naturalWidth === 0) {
-        hideBrokenImage();
-      }
+  function getAvatarSlot(card) {
+    return card.querySelector('[data-role="bot-avatar"]');
+  }
+
+  function applyCachedAvatars(container, backend, avatarClient) {
+    if (!avatarClient || !backend) return;
+    const cache = avatarClient.readCacheMap();
+    container.querySelectorAll('[data-bot-card]').forEach((card) => {
+      const bot = backend.bots.byId[card.getAttribute('data-bot-id')];
+      const username = bot && getBotAvatarName(bot);
+      if (!username) return;
+      const entry = cache[username];
+      if (!entry || !entry.dataUrl) return;
+      const slot = getAvatarSlot(card);
+      if (!slot || slot.dataset.avatarLoaded === username) return;
+      slot.dataset.avatarLoaded = username;
+      slot.innerHTML = `<img class="bot-avatar-image" data-role="bot-avatar-image" src="${entry.dataUrl}" alt="" decoding="async">`;
+    });
+  }
+
+  function scheduleAvatarLoads(container, backend, avatarClient) {
+    if (!avatarClient || !backend) return;
+    container.querySelectorAll('[data-bot-card]').forEach((card) => {
+      const bot = backend.bots.byId[card.getAttribute('data-bot-id')];
+      const username = bot && getBotAvatarName(bot);
+      if (!username) return;
+      const slot = getAvatarSlot(card);
+      if (!slot || slot.dataset.avatarLoaded === username) return;
+      avatarClient.getAvatar(username).then((dataUrl) => {
+        if (!dataUrl) return;
+        const currentSlot = getAvatarSlot(card);
+        if (!currentSlot || currentSlot.dataset.avatarLoaded === username) return;
+        currentSlot.dataset.avatarLoaded = username;
+        currentSlot.innerHTML = `<img class="bot-avatar-image" data-role="bot-avatar-image" src="${dataUrl}" alt="" decoding="async">`;
+      }).catch(() => {});
     });
   }
 
@@ -241,7 +258,8 @@
       `;
 
       container.querySelector('[data-action="refresh-backend"]')?.addEventListener('click', () => props.onRefreshBackend());
-      bindBotAvatarImages(container);
+      applyCachedAvatars(container, backend, props.avatarClient);
+      scheduleAvatarLoads(container, backend, props.avatarClient);
       containerStates.set(container, { structureKey });
     }
 
@@ -359,9 +377,10 @@
     applyFilters,
     buildBotAvatarHtml,
     buildBotChipsHtml,
+    applyCachedAvatars,
+    scheduleAvatarLoads,
     getBotAvatarFallback,
     getBotAvatarName,
-    getBotAvatarUrl,
     getBotServerDir,
     getBotDisplayName,
     getServerOptions,

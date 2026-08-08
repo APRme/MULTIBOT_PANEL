@@ -1,6 +1,7 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const { createAvatarService, AvatarServiceError, ERROR_CODES } = require('./lib/avatar-service');
 
 const DEFAULT_CONFIG = {
   host: '127.0.0.1',
@@ -57,7 +58,7 @@ function sendText(res, statusCode, text) {
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' http: https:; frame-ancestors 'none'; base-uri 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' http: https:; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'self'");
   res.setHeader('X-Frame-Options', 'DENY');
 }
 
@@ -83,9 +84,47 @@ function resolvePublicFile(publicDir, requestPath) {
   return fullPath;
 }
 
+const AVATAR_ERROR_STATUS = {
+  [ERROR_CODES.INVALID_USERNAME]: 400,
+  [ERROR_CODES.NOT_FOUND]: 404,
+  [ERROR_CODES.RATE_LIMITED]: 429,
+  [ERROR_CODES.UPSTREAM_ERROR]: 502
+};
+
+async function handleAvatarRequest(req, res, pathname, avatarService) {
+  let username;
+  try {
+    username = decodeURIComponent(pathname.slice('/avatar/'.length));
+  } catch (error) {
+    sendJson(res, 400, { error: ERROR_CODES.INVALID_USERNAME });
+    return;
+  }
+
+  try {
+    const { bytes, contentType } = await avatarService.getSkinPng(username);
+    setSecurityHeaders(res);
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400',
+      'Content-Length': bytes.length
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    res.end(bytes);
+  } catch (error) {
+    const statusCode = error instanceof AvatarServiceError
+      ? AVATAR_ERROR_STATUS[error.code] || 502
+      : 502;
+    sendJson(res, statusCode, { error: error instanceof AvatarServiceError ? error.code : ERROR_CODES.UPSTREAM_ERROR });
+  }
+}
+
 function createPanelServer(options = {}) {
   const publicDir = options.publicDir || path.join(__dirname, 'public');
   const title = options.title || DEFAULT_CONFIG.title;
+  const avatarService = createAvatarService({ fetcher: options.fetcher });
 
   return http.createServer((req, res) => {
     try {
@@ -94,6 +133,11 @@ function createPanelServer(options = {}) {
 
       if (req.method === 'GET' && pathname === '/healthz') {
         sendJson(res, 200, { ok: true, title });
+        return;
+      }
+
+      if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/avatar/')) {
+        handleAvatarRequest(req, res, pathname, avatarService);
         return;
       }
 

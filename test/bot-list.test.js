@@ -87,17 +87,87 @@ test('hidden elements override component display styles', () => {
 
 test('bot avatar uses valid Minecraft usernames without exposing email logins', () => {
   assert.equal(botList.getBotAvatarName({ username: 'APR_m' }), 'APR_m');
-  assert.equal(botList.getBotAvatarUrl({ username: 'APR_m' }), 'https://mc-heads.net/avatar/APR_m/40');
   assert.equal(botList.getBotAvatarName({ username: 'player@example.com' }), '');
-  assert.equal(botList.getBotAvatarUrl({ username: 'player@example.com' }), '');
 });
 
-test('bot avatar keeps a stable local fallback', () => {
+test('bot avatar keeps a stable local fallback and never embeds third-party urls', () => {
   assert.equal(botList.getBotAvatarFallback({ username: 'APR_m', id: 'server__bot' }, 'server'), 'A');
   assert.equal(botList.getBotAvatarFallback({ username: 'player@example.com', botDir: 'fallback-bot' }, 'server'), 'F');
 
   const html = botList.buildBotAvatarHtml({ username: 'APR_m', id: 'server__bot' }, 'server');
   assert.match(html, /class="bot-avatar"/);
-  assert.match(html, /class="bot-avatar-image"/);
   assert.match(html, />A<\/span>/);
+  assert.doesNotMatch(html, /mc-heads\.net/);
+  assert.doesNotMatch(html, /<img/);
+});
+
+function createFakeCard(botId) {
+  const slot = { dataset: {}, innerHTML: '' };
+  return {
+    slot,
+    getAttribute(name) {
+      return name === 'data-bot-id' ? botId : null;
+    },
+    querySelector(selector) {
+      return selector === '[data-role="bot-avatar"]' ? slot : null;
+    }
+  };
+}
+
+function createFakeContainer(cards) {
+  return {
+    querySelectorAll(selector) {
+      return selector === '[data-bot-card]' ? cards : [];
+    }
+  };
+}
+
+test('applyCachedAvatars inlines cached data urls into matching cards', () => {
+  const cards = [createFakeCard('server__bot-1'), createFakeCard('server__bot-2')];
+  const container = createFakeContainer(cards);
+  const backend = {
+    bots: {
+      byId: {
+        'server__bot-1': { id: 'server__bot-1', username: 'Alpha' },
+        'server__bot-2': { id: 'server__bot-2', username: 'Beta' }
+      }
+    }
+  };
+  const avatarClient = {
+    readCacheMap: () => ({
+      Alpha: { dataUrl: 'data:image/png;base64,ALPHA', fetchedAt: 1 }
+    })
+  };
+
+  botList.applyCachedAvatars(container, backend, avatarClient);
+  assert.match(cards[0].slot.innerHTML, /data:image\/png;base64,ALPHA/);
+  assert.equal(cards[0].slot.dataset.avatarLoaded, 'Alpha');
+  assert.equal(cards[1].slot.innerHTML, '');
+});
+
+test('scheduleAvatarLoads fills avatars asynchronously and skips loaded slots', async () => {
+  const cards = [createFakeCard('server__bot-1')];
+  const container = createFakeContainer(cards);
+  const backend = {
+    bots: {
+      byId: {
+        'server__bot-1': { id: 'server__bot-1', username: 'Alpha' }
+      }
+    }
+  };
+  const avatarClient = {
+    readCacheMap: () => ({}),
+    getAvatar: async (username) => `data:image/png;base64,${username.toUpperCase()}`
+  };
+
+  botList.scheduleAvatarLoads(container, backend, avatarClient);
+  assert.equal(cards[0].slot.innerHTML, '');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(cards[0].slot.innerHTML, /data:image\/png;base64,ALPHA/);
+  assert.equal(cards[0].slot.dataset.avatarLoaded, 'Alpha');
+
+  const before = cards[0].slot.innerHTML;
+  botList.scheduleAvatarLoads(container, backend, avatarClient);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(cards[0].slot.innerHTML, before);
 });

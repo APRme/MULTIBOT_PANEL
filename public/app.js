@@ -14,6 +14,7 @@
   const commandPanelComponent = namespace.components.commandPanel;
   const logsPanelComponent = namespace.components.logsPanel;
   const instancePresetsModule = namespace.instancePresets;
+  const avatarClient = namespace.skin.createAvatarClient();
   const BOT_LIST_WIDTH_STORAGE_KEY = 'multibot_panel.bot_list_width.v1';
   const DEFAULT_BOT_LIST_WIDTH = 360;
   const MIN_BOT_LIST_WIDTH = 240;
@@ -1796,6 +1797,7 @@
           : []
       }, (container) => {
         botListComponent.renderBotList(container, {
+          avatarClient,
           backend: selectedBackend,
           botFilterText: botFilterTextDraft,
           botFilterState: botFilterStateDraft,

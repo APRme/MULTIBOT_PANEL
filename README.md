@@ -177,7 +177,7 @@ node .\index.js
 
 - 顶部状态栏集中显示当前后端、连接状态和主要入口
 - 运行状态、能力和日志级别使用统一的状态色与紧凑徽标
-- Bot 列表在名称左侧显示 Minecraft 皮肤头像，头像不可用时保留首字母占位
+- Bot 列表在名称左侧显示 Minecraft 皮肤头像：面板进程代理微软/Mojang 官方接口取皮肤，浏览器裁脸后存 `localStorage`（TTL 30 天），头像不可用时保留首字母占位
 - 二元配置使用 Switch，命令操作使用明确的按钮层级
 - 所有主要控件都有 `hover`、按下、`focus-visible` 和禁用状态
 - 窄屏下主布局、实例列表和配置网格会按断点重排，不依赖页面缩放
@@ -278,10 +278,10 @@ node .\index.js
 
 `MULTIBOT_PANEL` 与 `MULTIBOT` 的边界非常明确：
 
-- 面板服务器只提供静态文件和 `/healthz`
+- 面板服务器提供静态文件、`/healthz` 和头像代理 `GET /avatar/:username`
 - 浏览器直接请求 `MULTIBOT` HTTP API
 - 浏览器直接连接 `MULTIBOT` 的 `GET /api/events` SSE
-- 面板服务器不转发、不缓存、不代理后端数据
+- 面板服务器不转发、不缓存、不代理后端数据（唯一的例外是皮肤头像：`/avatar/:username` 由面板进程代理微软/Mojang 接口并进程内缓存，见下文“头像获取”）
 - bot 账号、会话、认证缓存都仍由 `MULTIBOT` 管理
 
 ## 常见问题
@@ -317,6 +317,22 @@ node .\index.js
 ### 页面刷新后输入丢失
 
 面板已经做了草稿与滚动位置恢复；如果你仍然看到整页回到顶部，优先检查浏览器控制台里是否有脚本报错，通常是某个面板组件渲染异常而不是 SSE 重连本身。
+
+## 头像获取
+
+Bot 列表的头像来自 Minecraft 正版皮肤，由面板进程代理官方接口获取：
+
+1. `api.minecraftservices.com/minecraft/profile/lookup/name/<玩家名>` 拿 UUID（微软官方接口，替代即将弃用的 `api.mojang.com`）
+2. `sessionserver.mojang.com/session/minecraft/profile/<uuid>` 拿皮肤纹理地址
+3. 面板进程下载皮肤 PNG 并做 24 小时进程内缓存，通过 `GET /avatar/:username`（同源）返回给浏览器
+4. 浏览器用 canvas 裁出 8×8 头部区域放大为 40×40，转成 `data:` URL 存入 `localStorage`（默认 30 天，TTL 与尺寸定义在 `public/skin.js`）
+
+要点：
+
+- 实例配置里的 `username` 字段必须是与 Mojang 账户匹配的**游戏内名**，微软邮箱不会命中头像查询
+- 查询失败（玩家不存在 / 网络异常 / 限流）会做 5 分钟失败防抖，避免反复请求触发官方限流
+- 头像数据只经面板进程访问一次官方接口，之后面板缓存与浏览器 `localStorage` 共同兜底，刷新页面不再打上游
+- 正版换肤后最多 24 小时（面板进程缓存）+ 30 天（浏览器缓存）内仍显示旧头像，属预期行为
 
 ## 开发与测试
 
