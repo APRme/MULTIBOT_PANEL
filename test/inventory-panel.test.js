@@ -128,3 +128,59 @@ test('drop count resolution honors shift and alt modifiers', () => {
   assert.equal(inventoryPanel.resolveDropCount(inventory, 2, { ctrlKey: true }), 1);
   assert.equal(inventoryPanel.resolveDropCount(inventory, 0, { shiftKey: true }), null);
 });
+
+test('slot pixel positions follow the standard 9-column gui layout', () => {
+  const chestLayout = inventoryPanel.SLOT_LAYOUTS.chest;
+  const chest = { inventoryStart: 27, inventoryEnd: 63 };
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(0, chestLayout, chest), { x: 7, y: 17, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(8, chestLayout, chest), { x: 151, y: 17, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(26, chestLayout, chest), { x: 151, y: 53, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(27, chestLayout, chest), { x: 7, y: 83, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(53, chestLayout, chest), { x: 151, y: 119, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(54, chestLayout, chest), { x: 7, y: 145, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(62, chestLayout, chest), { x: 151, y: 145, w: 18, h: 18 });
+
+  const largeLayout = inventoryPanel.SLOT_LAYOUTS['large-chest'];
+  const large = { inventoryStart: 54, inventoryEnd: 90 };
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(27, largeLayout, large), { x: 7, y: 71, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(53, largeLayout, large), { x: 151, y: 107, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(54, largeLayout, large), { x: 7, y: 137, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(89, largeLayout, large), { x: 151, y: 199, w: 18, h: 18 });
+});
+
+test('window layout and background image resolution', () => {
+  assert.equal(inventoryPanel.getWindowLayout({ name: 'chest' }), inventoryPanel.SLOT_LAYOUTS.chest);
+  assert.equal(inventoryPanel.getWindowLayout({ name: 'furnace' }), null);
+  assert.equal(inventoryPanel.getWindowLayout(null), null);
+
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'chest', supported: true }), 'chest.png');
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'large-chest', supported: true }), 'generic_54.png');
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'crafting-table', supported: true }), 'crafting_table.png');
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'furnace', supported: true }), 'furnace.png');
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'minecraft:smoker', supported: false }), 'smoker.png');
+  assert.equal(inventoryPanel.getBackgroundImage({ name: 'minecraft:custom_menu', supported: false }), null);
+});
+
+test('chest windows render a background container with positioned slots', () => {
+  const html = inventoryPanel.renderInventoryHtml(createChestInventory());
+  assert.match(html, /inv-bg/);
+  assert.match(html, /background-image:url\('assets\/gui\/chest\.png'\)/);
+  assert.match(html, /aspect-ratio:176\/167/);
+  assert.match(html, /left:3\.977%/);   // 7/176
+  assert.match(html, /top:10\.180%/);   // 17/167
+  assert.doesNotMatch(html, /class="inventory-grid"/);
+});
+
+test('unknown windows with matching assets fall back to decorated grid', () => {
+  const html = inventoryPanel.renderInventoryHtml({
+    id: 9,
+    name: 'minecraft:smoker',
+    supported: false,
+    inventoryStart: 3,
+    inventoryEnd: 39,
+    slots: {}
+  });
+  assert.match(html, /inv-grid-with-bg/);
+  assert.match(html, /background-image:url\('assets\/gui\/smoker\.png'\)/);
+  assert.match(html, /未识别窗口/);
+});

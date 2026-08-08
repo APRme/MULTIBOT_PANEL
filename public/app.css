@@ -1564,3 +1564,48 @@ input[type="checkbox"] {
 .inventory-panel .empty-state {
   padding: 1rem 0;
 }
+
+/* ---------- 原版 GUI 背景 ---------- */
+
+.inv-bg {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+
+.inv-bg .inv-slot {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  cursor: grab;
+}
+
+.inv-bg .inv-slot-empty {
+  opacity: 1;
+  background: transparent;
+}
+
+.inv-bg .inv-slot:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+}
+
+.inv-bg .inv-slot-empty:hover {
+  background: transparent;
+}
+
+.inv-grid-with-bg {
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: top center;
+  padding: 14px 12px 20px;
+  min-height: 150px;
+  image-rendering: pixelated;
+}

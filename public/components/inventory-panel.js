@@ -10,6 +10,68 @@
     furnace: '熔炉'
   };
 
+  // 已知窗口类型 → 原版 GUI 背景图（public/assets/gui/）
+  const BACKGROUND_IMAGES = {
+    inventory: 'inventory.png',
+    chest: 'chest.png',
+    'large-chest': 'generic_54.png',
+    'crafting-table': 'crafting_table.png',
+    furnace: 'furnace.png'
+  };
+
+  // unsupported 窗口的原始 type 尽力匹配背景图（去掉 minecraft: 前缀）
+  const FALLBACK_BACKGROUND_IMAGES = {
+    smoker: 'smoker.png',
+    blast_furnace: 'blast_furnace.png',
+    brewing_stand: 'brewing_stand.png',
+    dispenser: 'dispenser.png',
+    hopper: 'hopper.png',
+    shulker_box: 'shulker_box.png'
+  };
+
+  // 精确对齐布局：槽位按背景图像素坐标定位（容器区 + 背包区 9x3 + 快捷栏 9）
+  const SLOT_LAYOUTS = {
+    chest: { image: 'chest.png', width: 176, height: 167, containerRows: 3, containerY: 17, inventoryY: 83, hotbarY: 145 },
+    'large-chest': { image: 'generic_54.png', width: 176, height: 222, containerRows: 6, containerY: 17, inventoryY: 137, hotbarY: 199 }
+  };
+
+  function getSlotPixelPosition(slot, layout, inventory) {
+    if (slot < (inventory && inventory.inventoryStart)) {
+      const row = Math.floor(slot / 9);
+      const col = slot % 9;
+      return { x: 7 + col * 18, y: layout.containerY + row * 18, w: 18, h: 18 };
+    }
+    const idx = slot - (inventory && inventory.inventoryStart || 0);
+    const row = Math.floor(idx / 9);
+    const col = idx % 9;
+    if (row < 3) {
+      return { x: 7 + col * 18, y: layout.inventoryY + row * 18, w: 18, h: 18 };
+    }
+    return { x: 7 + col * 18, y: layout.hotbarY + (row - 3) * 18, w: 18, h: 18 };
+  }
+
+  function getWindowLayout(inventory) {
+    if (!inventory) return null;
+    return SLOT_LAYOUTS[inventory.name] || null;
+  }
+
+  function getFallbackBackground(name) {
+    const type = String(name || '').replace(/^minecraft:/, '');
+    return FALLBACK_BACKGROUND_IMAGES[type] || null;
+  }
+
+  function getBackgroundImage(inventory) {
+    if (!inventory) return null;
+    if (inventory.supported !== false) {
+      return BACKGROUND_IMAGES[inventory.name] || null;
+    }
+    return getFallbackBackground(inventory.name);
+  }
+
+  function toPercent(value, total) {
+    return `${((value / total) * 100).toFixed(3)}%`;
+  }
+
   function getWindowLabel(name, supported) {
     if (!name) return '窗口';
     if (supported === false) return `窗口 (${name})`;
@@ -71,11 +133,12 @@
     return parts.join(' ');
   }
 
-  function renderSlotHtml(slot) {
+  function renderSlotHtml(slot, positionStyle) {
     const index = slot.slot;
     const item = slot.item;
+    const styleAttr = positionStyle ? ` style="${positionStyle}"` : '';
     if (!item) {
-      return `<div class="inv-slot inv-slot-empty" data-slot="${index}"></div>`;
+      return `<div class="inv-slot inv-slot-empty" data-slot="${index}"${styleAttr}></div>`;
     }
 
     const ratio = getDurabilityRatio(item);
@@ -87,12 +150,28 @@
       : '';
 
     return `
-      <div class="inv-slot" data-slot="${index}" draggable="true" title="${formatters.escapeHtml(getItemTooltip(item))}">
+      <div class="inv-slot" data-slot="${index}" draggable="true" title="${formatters.escapeHtml(getItemTooltip(item))}"${styleAttr}>
         <span class="inv-slot-label">${formatters.escapeHtml(getItemShortLabel(item))}</span>
         ${countHtml}
         ${durabilityHtml}
       </div>
     `;
+  }
+
+  function renderSlotsHtml(slots, layout, inventory) {
+    if (!layout) {
+      return slots.map((entry) => renderSlotHtml(entry)).join('');
+    }
+    return slots.map((entry) => {
+      const pos = getSlotPixelPosition(entry.slot, layout, inventory);
+      const style = [
+        `left:${toPercent(pos.x, layout.width)}`,
+        `top:${toPercent(pos.y, layout.height)}`,
+        `width:${toPercent(pos.w, layout.width)}`,
+        `height:${toPercent(pos.h, layout.height)}`
+      ].join(';');
+      return renderSlotHtml(entry, style);
+    }).join('');
   }
 
   function renderInventoryHtml(inventory) {
@@ -111,10 +190,27 @@
     const label = getWindowLabel(inventory.name, inventory.supported);
     const slots = getSlotItems(inventory);
     const occupiedCount = slots.filter((entry) => entry.item).length;
-    const unsupported = Boolean(inventory) && inventory.supported === false;
+    const unsupported = inventory.supported === false;
+    const layout = getWindowLayout(inventory);
+    const backgroundImage = getBackgroundImage(inventory);
     const hint = unsupported
       ? '<p class="helper">该窗口类型面板不认识，按格子列表显示；可点击“关闭窗口”退出。</p>'
       : '';
+
+    let gridHtml;
+    if (layout) {
+      gridHtml = `
+        <div class="inv-bg" data-role="inventory-grid" style="background-image:url('assets/gui/${layout.image}');aspect-ratio:${layout.width}/${layout.height}">
+          ${renderSlotsHtml(slots, layout, inventory)}
+        </div>
+      `;
+    } else {
+      gridHtml = `
+        <div class="inventory-grid${backgroundImage ? ' inv-grid-with-bg' : ''}" data-role="inventory-grid"${backgroundImage ? ` style="background-image:url('assets/gui/${backgroundImage}')"` : ''}>
+          ${renderSlotsHtml(slots, null, inventory)}
+        </div>
+      `;
+    }
 
     return `
       <div class="row space section-heading-copy">
@@ -125,9 +221,7 @@
         <button class="button" data-action="close-window" type="button">关闭窗口</button>
       </div>
       ${hint}
-      <div class="inventory-grid" data-role="inventory-grid">
-        ${slots.map(renderSlotHtml).join('')}
-      </div>
+      ${gridHtml}
     `;
   }
 
@@ -220,8 +314,15 @@
 
   const api = {
     WINDOW_LABELS,
+    BACKGROUND_IMAGES,
+    FALLBACK_BACKGROUND_IMAGES,
+    SLOT_LAYOUTS,
     getWindowLabel,
     getSlotItems,
+    getSlotPixelPosition,
+    getWindowLayout,
+    getFallbackBackground,
+    getBackgroundImage,
     getItemShortLabel,
     getDurabilityRatio,
     getItemTooltip,
