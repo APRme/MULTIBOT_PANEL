@@ -93,7 +93,9 @@
     const failureTtlMs = options.failureTtlMs || FAILURE_TTL_MS;
     const fetchFn = options.fetchFn || ((username) => {
       const origin = typeof location !== 'undefined' ? location.origin : '';
-      return fetch(`${origin}/avatar/${encodeURIComponent(username)}`);
+      // no-store：头像新鲜度由 localStorage 缓存与面板进程缓存共同管理，绕过浏览器 HTTP 缓存，
+      // 否则清除缓存后的热重载可能命中旧 PNG
+      return fetch(`${origin}/avatar/${encodeURIComponent(username)}`, { cache: 'no-store' });
     });
     const cropFn = options.cropFn || cropFaceToDataUrl;
 

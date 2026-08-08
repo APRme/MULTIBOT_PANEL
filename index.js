@@ -136,8 +136,14 @@ function createPanelServer(options = {}) {
         return;
       }
 
-      if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/avatar/')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/avatar/') && pathname !== '/avatar/clear-cache') {
         handleAvatarRequest(req, res, pathname, avatarService);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/avatar/clear-cache') {
+        avatarService.clearCache();
+        sendJson(res, 200, { ok: true });
         return;
       }
 

@@ -233,6 +233,31 @@ test('avatar endpoint maps errors to http status codes', async () => {
   }
 });
 
+test('avatar clear-cache endpoint resets the in-process cache', async () => {
+  const stub = createStubFetcher();
+  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-avatar-clear-'));
+  fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
+
+  const server = createPanelServer({ publicDir, title: 'Panel Test', fetcher: stub.fetcher });
+  const baseUrl = await listen(server);
+
+  try {
+    await fetch(`${baseUrl}/avatar/Steve`);
+    assert.equal(stub.calls.length, 3);
+    await fetch(`${baseUrl}/avatar/Steve`);
+    assert.equal(stub.calls.length, 3, 'second fetch must hit the in-process cache');
+
+    const clearResponse = await fetch(`${baseUrl}/avatar/clear-cache`, { method: 'POST' });
+    assert.equal(clearResponse.status, 200);
+    assert.deepEqual(await clearResponse.json(), { ok: true });
+
+    await fetch(`${baseUrl}/avatar/Steve`);
+    assert.equal(stub.calls.length, 6, 'after clearing, the next fetch must hit upstream again');
+  } finally {
+    await close(server);
+  }
+});
+
 test('avatar helper functions parse textures and normalize urls', () => {
   assert.equal(isValidUsername('APR_m'), true);
   assert.equal(isValidUsername('player@example.com'), false);

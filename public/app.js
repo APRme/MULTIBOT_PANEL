@@ -666,6 +666,21 @@
       requestRender();
     }
 
+    async function clearAvatarCacheAndReload() {
+      const origin = typeof location !== 'undefined' ? location.origin : '';
+      try {
+        await fetch(`${origin}/avatar/clear-cache`, { method: 'POST' });
+      } catch (error) {
+        // 面板进程缓存清除失败不阻塞浏览器侧清除与重载
+      }
+      avatarClient.clearCache();
+      const backend = getSelectedBackend(store.getState());
+      if (backend) {
+        botListComponent.resetAvatarSlots(dom.botsPanel, backend);
+        botListComponent.scheduleAvatarLoads(dom.botsPanel, backend, avatarClient);
+      }
+    }
+
     function persistState() {
       const state = store.getState();
       storageApi.saveBackendProfiles(global.localStorage, getPersistedBackendProfiles(state));
@@ -1745,12 +1760,7 @@
               }
             },
             onClearAvatarCache() {
-              avatarClient.clearCache();
-              const backend = selectedBackend;
-              if (backend) {
-                botListComponent.resetAvatarSlots(dom.botsPanel, backend);
-                botListComponent.scheduleAvatarLoads(dom.botsPanel, backend, avatarClient);
-              }
+              void clearAvatarCacheAndReload();
             },
             onChangeFilterText(value) {
               commitInstanceFilterText(value);
