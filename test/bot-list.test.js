@@ -171,3 +171,30 @@ test('scheduleAvatarLoads fills avatars asynchronously and skips loaded slots', 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(cards[0].slot.innerHTML, before);
 });
+
+test('resetAvatarSlots clears loaded avatars and restores the fallback', async () => {
+  const cards = [createFakeCard('server__bot-1')];
+  const container = createFakeContainer(cards);
+  const backend = {
+    bots: {
+      byId: {
+        'server__bot-1': { id: 'server__bot-1', username: 'Alpha' }
+      }
+    }
+  };
+  const avatarClient = {
+    readCacheMap: () => ({}),
+    getAvatar: async () => 'data:image/png;base64,ALPHA'
+  };
+
+  botList.scheduleAvatarLoads(container, backend, avatarClient);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(cards[0].slot.innerHTML, /data:image\/png;base64,ALPHA/);
+
+  botList.resetAvatarSlots(container, backend);
+  assert.equal(cards[0].slot.dataset.avatarLoaded, undefined);
+  assert.match(cards[0].slot.innerHTML, />A<\/span>/);
+
+  botList.resetAvatarSlots(container, backend);
+  assert.equal(cards[0].slot.innerHTML, '<span class="bot-avatar-fallback">A</span>');
+});

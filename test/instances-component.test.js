@@ -68,3 +68,35 @@ test('invalid editor tabs fall back according to editor mode', () => {
   assert.match(html, /aria-selected="true"[\s\S]*?data-editor-tab="bot"/);
   assert.match(html, /data-editor-panel="server"\s+hidden>/);
 });
+
+const sampleInstances = [
+  { serverDir: 'server-a', botDir: 'bot-1', id: 'Alpha', name: 'Alpha' },
+  { serverDir: 'server-a', botDir: 'bot-2', id: 'Beta', name: 'Beta' },
+  { serverDir: 'server-b', botDir: 'bot-3', id: 'Gamma', name: 'Gamma' }
+];
+
+test('instance filters combine server directory and name search', () => {
+  assert.deepEqual(
+    instancesComponent.applyInstanceFilters(sampleInstances, '', '').map((instance) => instance.botDir),
+    ['bot-1', 'bot-2', 'bot-3']
+  );
+  assert.deepEqual(
+    instancesComponent.applyInstanceFilters(sampleInstances, 'beta', '').map((instance) => instance.botDir),
+    ['bot-2']
+  );
+  assert.deepEqual(
+    instancesComponent.applyInstanceFilters(sampleInstances, 'bot-1', '').map((instance) => instance.botDir),
+    ['bot-1']
+  );
+  assert.deepEqual(
+    instancesComponent.applyInstanceFilters(sampleInstances, '', 'server-a').map((instance) => instance.botDir),
+    ['bot-1', 'bot-2']
+  );
+  assert.deepEqual(instancesComponent.applyInstanceFilters(sampleInstances, 'alpha', 'server-b'), []);
+});
+
+test('instance server options are sorted and de-duplicated', () => {
+  assert.deepEqual(instancesComponent.getInstanceServerOptions(sampleInstances), ['server-a', 'server-b']);
+  assert.deepEqual(instancesComponent.getInstanceServerOptions([]), []);
+  assert.deepEqual(instancesComponent.getInstanceServerOptions([{ botDir: 'x' }]), []);
+});

@@ -336,6 +336,26 @@
     });
   }
 
+  function getInstanceServerOptions(instances) {
+    return Array.from(new Set((instances || []).map((instance) => String(instance && instance.serverDir || '').trim()).filter(Boolean)))
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  function applyInstanceFilters(instances, filterText, filterServer) {
+    const text = String(filterText || '').trim().toLowerCase();
+    const server = String(filterServer || '').trim().toLowerCase();
+    return (instances || []).filter((instance) => {
+      const matchesServer = !server || String(instance && instance.serverDir || '').toLowerCase() === server;
+      const matchesText = !text || [
+        instance && instance.id,
+        instance && instance.name,
+        instance && instance.serverDir,
+        instance && instance.botDir
+      ].some((value) => String(value || '').toLowerCase().includes(text));
+      return matchesServer && matchesText;
+    });
+  }
+
   function formatInstanceEnabledText(enabled) {
     return enabled === false ? '已禁用' : '已启用';
   }
@@ -729,6 +749,10 @@
   function renderInstancesPanel(container, props) {
     const backend = props.backend;
     const instances = sortInstances(props.instances);
+    const filterText = String(props.filterText || '');
+    const filterServer = String(props.filterServer || '');
+    const serverOptions = getInstanceServerOptions(instances);
+    const filteredInstances = applyInstanceFilters(instances, filterText, filterServer);
     const selectedInstance = props.selectedInstance || null;
     const editor = props.editor || {
       open: false,
@@ -754,6 +778,7 @@
           </div>
           <div class="toolbar-group">
             <button class="button" data-action="refresh-instances" ${props.loadingList ? 'disabled' : ''}>${props.loadingList ? '刷新中...' : '刷新'}</button>
+            <button class="button" data-action="clear-avatar-cache">清除头像缓存</button>
             <button class="button primary" data-action="create-instance">新增实例</button>
             <button class="button" data-action="close-instances">关闭</button>
           </div>
@@ -762,28 +787,49 @@
       </div>
       <div class="instances-layout">
         <div class="instances-list-pane">
+          <div class="stack filter-surface">
+            <label class="label search-field">
+              <span class="sr-only">筛选实例</span>
+              <input class="input grow" data-instance-filter="text" value="${formatters.escapeHtml(filterText)}" placeholder="筛选实例名、服务器或 Bot 目录">
+            </label>
+            <div class="filter-row">
+              <select class="select" data-instance-filter="server" aria-label="服务器筛选">
+                <option value="">全部服务器</option>
+                ${serverOptions.map((serverDir) => `
+                  <option value="${formatters.escapeHtml(serverDir)}" ${filterServer === serverDir ? 'selected' : ''}>${formatters.escapeHtml(serverDir)}</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
           <div class="list" data-scroll-id="instance-list">
             ${instances.length === 0
               ? '<div class="empty-state">当前后端还没有实例。</div>'
-              : instances.map((instance) => {
-                const key = getInstanceKey(instance.serverDir, instance.botDir);
-                return `
-                  <div class="list-card ${props.selectedKey === key ? 'selected' : ''}" data-instance-key="${formatters.escapeHtml(key)}">
-                    <div class="row space">
-                      <div class="stack">
-                        <strong class="mono">${formatters.escapeHtml(`${instance.serverDir}/${instance.botDir}`)}</strong>
-                        <span class="subtitle">${formatters.escapeHtml(instance.id || '未命名实例')}</span>
+              : filteredInstances.length === 0
+                ? '<div class="empty-state" data-role="instance-filter-empty">没有匹配的实例。</div>'
+                : filteredInstances.map((instance) => {
+                  const key = getInstanceKey(instance.serverDir, instance.botDir);
+                  return `
+                    <div class="list-card ${props.selectedKey === key ? 'selected' : ''}" data-instance-key="${formatters.escapeHtml(key)}" data-instance-server="${formatters.escapeHtml(instance.serverDir || '')}" data-instance-search="${formatters.escapeHtml([
+                      instance.id,
+                      instance.name,
+                      instance.serverDir,
+                      instance.botDir
+                    ].map((value) => String(value || '')).join(' '))}">
+                      <div class="row space">
+                        <div class="stack">
+                          <strong class="mono">${formatters.escapeHtml(`${instance.serverDir}/${instance.botDir}`)}</strong>
+                          <span class="subtitle">${formatters.escapeHtml(instance.id || '未命名实例')}</span>
+                        </div>
+                        <span class="badge ${formatters.formatStateClass(instance.state)}">${formatters.escapeHtml(formatters.formatStateText(instance.state || 'unknown'))}</span>
                       </div>
-                      <span class="badge ${formatters.formatStateClass(instance.state)}">${formatters.escapeHtml(formatters.formatStateText(instance.state || 'unknown'))}</span>
+                      <div class="row wrap">
+                        <span class="chip mono">${formatters.escapeHtml(`${instance.host || '—'}:${instance.port || '—'}`)}</span>
+                        <span class="chip">${formatters.escapeHtml(formatInstanceEnabledText(instance.enabled))}</span>
+                        <span class="chip">${formatters.escapeHtml(formatInstanceStartModeText(instance.autoStart))}</span>
+                      </div>
                     </div>
-                    <div class="row wrap">
-                      <span class="chip mono">${formatters.escapeHtml(`${instance.host || '—'}:${instance.port || '—'}`)}</span>
-                      <span class="chip">${formatters.escapeHtml(formatInstanceEnabledText(instance.enabled))}</span>
-                      <span class="chip">${formatters.escapeHtml(formatInstanceStartModeText(instance.autoStart))}</span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
+                  `;
+                }).join('')}
           </div>
         </div>
         <div class="instances-detail-pane" data-scroll-id="instance-detail">
@@ -799,11 +845,51 @@
     container.querySelector('[data-action="refresh-instances"]')?.addEventListener('click', () => {
       props.onRefreshInstances();
     });
+    container.querySelector('[data-action="clear-avatar-cache"]')?.addEventListener('click', () => {
+      if (typeof props.onClearAvatarCache === 'function') {
+        props.onClearAvatarCache();
+      }
+    });
     container.querySelector('[data-action="create-instance"]')?.addEventListener('click', () => {
       props.onCreateInstance();
     });
     container.querySelector('[data-action="close-instances"]')?.addEventListener('click', () => {
       props.onClose();
+    });
+
+    const filterTextInput = container.querySelector('[data-instance-filter="text"]');
+    const filterServerSelect = container.querySelector('[data-instance-filter="server"]');
+
+    function applyRenderedInstanceFilters(text, server) {
+      const normalizedText = String(text || '').trim().toLowerCase();
+      const normalizedServer = String(server || '').trim().toLowerCase();
+      let visibleCount = 0;
+      container.querySelectorAll('[data-instance-key]').forEach((card) => {
+        const searchText = String(card.getAttribute('data-instance-search') || '').toLowerCase();
+        const serverText = String(card.getAttribute('data-instance-server') || '').toLowerCase();
+        const matchesText = !normalizedText || searchText.includes(normalizedText);
+        const matchesServer = !normalizedServer || serverText === normalizedServer;
+        const visible = matchesText && matchesServer;
+        card.hidden = !visible;
+        if (visible) visibleCount += 1;
+      });
+      const emptyState = container.querySelector('[data-role="instance-filter-empty"]');
+      if (emptyState) emptyState.hidden = visibleCount !== 0;
+    }
+
+    filterTextInput?.addEventListener('input', (event) => {
+      const value = event.target.value;
+      if (typeof props.onChangeFilterText === 'function') {
+        props.onChangeFilterText(value);
+      }
+      applyRenderedInstanceFilters(value, filterServerSelect ? filterServerSelect.value : filterServer);
+    });
+    filterServerSelect?.addEventListener('change', (event) => {
+      const value = event.target.value;
+      if (typeof props.onChangeFilterServer === 'function') {
+        props.onChangeFilterServer(value);
+      }
+      applyRenderedInstanceFilters(filterTextInput ? filterTextInput.value : filterText, value);
     });
 
     container.querySelectorAll('[data-instance-key]').forEach((element) => {
@@ -956,6 +1042,8 @@
     parseNumberListText,
     applyReconnectModeToggle,
     getInstanceKey,
+    getInstanceServerOptions,
+    applyInstanceFilters,
     renderInstancesPanel
   };
 

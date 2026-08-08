@@ -102,6 +102,17 @@
     });
   }
 
+  function resetAvatarSlots(container, backend) {
+    if (!backend) return;
+    container.querySelectorAll('[data-bot-card]').forEach((card) => {
+      const bot = backend.bots.byId[card.getAttribute('data-bot-id')];
+      const slot = getAvatarSlot(card);
+      if (!slot || !slot.dataset.avatarLoaded) return;
+      delete slot.dataset.avatarLoaded;
+      slot.innerHTML = `<span class="bot-avatar-fallback">${formatters.escapeHtml(getBotAvatarFallback(bot, ''))}</span>`;
+    });
+  }
+
   function getServerOptions(bots) {
     return Array.from(new Set((bots || []).map(getBotServerDir).filter(Boolean)))
       .sort((left, right) => left.localeCompare(right));
@@ -379,6 +390,7 @@
     buildBotChipsHtml,
     applyCachedAvatars,
     scheduleAvatarLoads,
+    resetAvatarSlots,
     getBotAvatarFallback,
     getBotAvatarName,
     getBotServerDir,

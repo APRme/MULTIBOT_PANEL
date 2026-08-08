@@ -185,6 +185,8 @@
     let botFilterStateDraft = persistedUi.botFilterState || 'all';
     let botFilterServerDraft = persistedUi.botFilterServer || '';
     let botFilterSyncTimer = null;
+    let instanceFilterTextDraft = '';
+    let instanceFilterSyncTimer = null;
     const instanceModalState = {
       backendId: null,
       loadingList: false,
@@ -193,6 +195,8 @@
       instances: [],
       selectedKey: null,
       detail: null,
+      filterServer: '',
+      filterText: '',
       editor: {
         open: false,
         mode: 'create',
@@ -609,6 +613,13 @@
         instanceModalState.instances = [];
         instanceModalState.selectedKey = null;
         instanceModalState.detail = null;
+        instanceModalState.filterServer = '';
+        instanceModalState.filterText = '';
+        instanceFilterTextDraft = '';
+        if (instanceFilterSyncTimer) {
+          global.clearTimeout(instanceFilterSyncTimer);
+          instanceFilterSyncTimer = null;
+        }
         closeInstanceEditor();
       }
       syncInstancesModal();
@@ -636,6 +647,23 @@
         botFilterSyncTimer = null;
       }
       persistState();
+    }
+
+    function commitInstanceFilterText(value) {
+      instanceFilterTextDraft = String(value || '');
+      if (instanceFilterSyncTimer) {
+        global.clearTimeout(instanceFilterSyncTimer);
+      }
+      instanceFilterSyncTimer = global.setTimeout(() => {
+        instanceFilterSyncTimer = null;
+        instanceModalState.filterText = instanceFilterTextDraft;
+        requestRender();
+      }, 250);
+    }
+
+    function commitInstanceFilterServer(value) {
+      instanceModalState.filterServer = String(value || '');
+      requestRender();
     }
 
     function persistState() {
@@ -1674,6 +1702,8 @@
           error: instanceModalState.error,
           instances: instanceModalState.instances,
           selectedKey: instanceModalState.selectedKey,
+          filterText: instanceModalState.filterText,
+          filterServer: instanceModalState.filterServer,
           selectedInstance,
           editor: instanceModalState.editor,
           presets: instancePresetsModule && typeof instancePresetsModule.getPresetDefinitions === 'function'
@@ -1687,6 +1717,8 @@
             error: instanceModalState.error,
             instances: instanceModalState.instances,
             selectedKey: instanceModalState.selectedKey,
+            filterText: instanceModalState.filterText,
+            filterServer: instanceModalState.filterServer,
             selectedInstance,
             editor: {
               ...instanceModalState.editor,
@@ -1711,6 +1743,20 @@
                   silent: instanceModalState.editor.open === true
                 });
               }
+            },
+            onClearAvatarCache() {
+              avatarClient.clearCache();
+              const backend = selectedBackend;
+              if (backend) {
+                botListComponent.resetAvatarSlots(dom.botsPanel, backend);
+                botListComponent.scheduleAvatarLoads(dom.botsPanel, backend, avatarClient);
+              }
+            },
+            onChangeFilterText(value) {
+              commitInstanceFilterText(value);
+            },
+            onChangeFilterServer(value) {
+              commitInstanceFilterServer(value);
             },
             onSelectInstance(serverDir, botDir) {
               if (modalBackend) {

@@ -21,6 +21,9 @@ function createMemoryStorage(initialText) {
     setItem(key, value) {
       map.set(key, String(value));
     },
+    removeItem(key) {
+      map.delete(key);
+    },
     dump() {
       return map.get('multibot_panel.avatars.v1');
     }
@@ -161,6 +164,22 @@ test('overlay drawing is limited to 64px tall double-layer skins', () => {
   assert.equal(shouldDrawOverlay(32), false);
   assert.equal(shouldDrawOverlay(0), false);
   assert.equal(shouldDrawOverlay('64'), true);
+});
+
+test('client clearCache removes stored avatars', async () => {
+  const storage = createMemoryStorage(JSON.stringify({
+    Steve: { dataUrl: 'data:image/png;base64,CACHED', fetchedAt: 1000 }
+  }));
+  const client = createAvatarClient({
+    storage,
+    now: () => 1000 + DEFAULT_TTL_MS - 1,
+    fetchFn: async () => { throw new Error('should not fetch'); }
+  });
+
+  assert.equal(await client.getAvatar('Steve'), 'data:image/png;base64,CACHED');
+  client.clearCache();
+  assert.equal(storage.dump(), undefined);
+  assert.deepEqual(client.readCacheMap(), {});
 });
 
 test('client works without storage', async () => {

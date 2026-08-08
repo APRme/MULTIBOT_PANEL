@@ -150,9 +150,19 @@
       return readCache();
     }
 
+    function clearCache() {
+      if (!storage) return;
+      try {
+        storage.removeItem(STORAGE_KEY);
+      } catch (error) {
+        // localStorage 不可用时静默降级
+      }
+    }
+
     return {
       getAvatar,
-      readCacheMap
+      readCacheMap,
+      clearCache
     };
   }
 
