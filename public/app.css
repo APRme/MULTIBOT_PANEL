@@ -1610,3 +1610,23 @@ input[type="checkbox"] {
   min-height: 150px;
   image-rendering: pixelated;
 }
+
+/* ---------- 物品图标 ---------- */
+
+.inv-item-icon {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.inv-slot-count {
+  z-index: 1;
+}
+
+.inv-slot-durability {
+  z-index: 1;
+}

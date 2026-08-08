@@ -2,6 +2,30 @@
   const namespace = global.MultibotPanel = global.MultibotPanel || {};
   const formatters = namespace.formatters;
 
+  const ICON_INDEX_URL = 'assets/items-index.json';
+  const ICON_DIR = 'assets/items';
+  let iconIndex = null;
+  let iconIndexPromise = null;
+
+  function loadIconIndex() {
+    if (!iconIndexPromise) {
+      iconIndexPromise = fetch(ICON_INDEX_URL)
+        .then((response) => (response.ok ? response.json() : []))
+        .catch(() => []);
+    }
+    return iconIndexPromise;
+  }
+
+  function setIconIndex(index) {
+    iconIndex = Array.isArray(index) ? index : null;
+  }
+
+  function getItemIconUrl(item) {
+    if (!item || !item.name || !iconIndex) return '';
+    const file = `${String(item.name).replace(/^minecraft:/, '')}.png`;
+    return iconIndex.includes(file) ? `${ICON_DIR}/${file}` : '';
+  }
+
   const WINDOW_LABELS = {
     inventory: '背包',
     chest: '箱子',
@@ -168,6 +192,10 @@
       return `<div class="inv-slot inv-slot-empty" data-slot="${index}"${styleAttr}></div>`;
     }
 
+    const iconUrl = getItemIconUrl(item);
+    const contentHtml = iconUrl
+      ? `<img class="inv-item-icon" src="${formatters.escapeHtml(iconUrl)}" alt="" decoding="async" draggable="false">`
+      : `<span class="inv-slot-label">${formatters.escapeHtml(getItemShortLabel(item))}</span>`;
     const ratio = getDurabilityRatio(item);
     const durabilityHtml = ratio !== null
       ? `<span class="inv-slot-durability" style="--durability:${ratio.toFixed(3)}"></span>`
@@ -178,7 +206,7 @@
 
     return `
       <div class="inv-slot" data-slot="${index}" draggable="true" title="${formatters.escapeHtml(getItemTooltip(item))}"${styleAttr}>
-        <span class="inv-slot-label">${formatters.escapeHtml(getItemShortLabel(item))}</span>
+        ${contentHtml}
         ${countHtml}
         ${durabilityHtml}
       </div>
@@ -338,6 +366,16 @@
     }
 
     bindSlotDragAndDrop(container, props);
+
+    // 图标索引异步就绪后，若当前有物品但还没有图标，重绘一次补上
+    loadIconIndex().then(() => {
+      if (!iconIndex) return;
+      const grid = container.querySelector('[data-role="inventory-grid"]');
+      const hasItems = props.inventory && Object.keys(props.inventory.slots || {}).length > 0;
+      if (grid && hasItems && !grid.querySelector('.inv-item-icon')) {
+        renderInventoryPanel(container, props);
+      }
+    });
   }
 
   const api = {
@@ -345,6 +383,8 @@
     BACKGROUND_IMAGES,
     FALLBACK_BACKGROUND_IMAGES,
     SLOT_LAYOUTS,
+    ICON_INDEX_URL,
+    ICON_DIR,
     getWindowLabel,
     getSlotItems,
     getSlotPixelPosition,
@@ -354,6 +394,9 @@
     getItemShortLabel,
     getDurabilityRatio,
     getItemTooltip,
+    loadIconIndex,
+    setIconIndex,
+    getItemIconUrl,
     renderSlotHtml,
     renderInventoryHtml,
     resolveDropCount,

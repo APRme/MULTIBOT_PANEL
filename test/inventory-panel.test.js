@@ -216,3 +216,34 @@ test('inventory window renders the exact-aligned background container', () => {
   assert.match(html, /data-slot="0"/);
   assert.match(html, /data-slot="45"/);
 });
+
+test('item icon url maps item names through the icon index', () => {
+  inventoryPanel.setIconIndex(['oak_planks.png', 'diamond.png']);
+  assert.equal(inventoryPanel.getItemIconUrl({ name: 'minecraft:oak_planks' }), 'assets/items/oak_planks.png');
+  assert.equal(inventoryPanel.getItemIconUrl({ name: 'minecraft:diamond' }), 'assets/items/diamond.png');
+  assert.equal(inventoryPanel.getItemIconUrl({ name: 'minecraft:crafting_table' }), '');
+  assert.equal(inventoryPanel.getItemIconUrl({ name: '' }), '');
+  assert.equal(inventoryPanel.getItemIconUrl(null), '');
+  inventoryPanel.setIconIndex(null);
+  assert.equal(inventoryPanel.getItemIconUrl({ name: 'minecraft:diamond' }), '');
+});
+
+test('slots render item icons when the index knows the texture', () => {
+  inventoryPanel.setIconIndex(['oak_planks.png']);
+  const html = inventoryPanel.renderSlotHtml({
+    slot: 9,
+    item: { slot: 9, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 64, metadata: 0 }
+  });
+  assert.match(html, /inv-item-icon/);
+  assert.match(html, /src="assets\/items\/oak_planks\.png"/);
+  assert.doesNotMatch(html, /inv-slot-label/);
+  assert.match(html, /64/);
+  inventoryPanel.setIconIndex(null);
+
+  const fallback = inventoryPanel.renderSlotHtml({
+    slot: 9,
+    item: { slot: 9, name: 'minecraft:crafting_table', displayName: '工作台', count: 1, metadata: 0 }
+  });
+  assert.match(fallback, /inv-slot-label/);
+  assert.doesNotMatch(fallback, /inv-item-icon/);
+});
