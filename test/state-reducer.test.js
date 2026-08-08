@@ -599,3 +599,187 @@ test('state reducer keeps distinct same-key logs beyond existing occurrences', (
   const logs = state.backends.byId['backend-1'].bots.byId['bot-1'].logs;
   assert.equal(logs.length, 2);
 });
+
+test('SET_BOT_INVENTORY stores window with slots indexed by slot number', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: {
+      id: 3,
+      name: 'chest',
+      supported: true,
+      inventoryStart: 27,
+      inventoryEnd: 54,
+      slots: [
+        { slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 64, metadata: 0, durabilityUsed: null, maxDurability: null },
+        { slot: 10, name: 'minecraft:dirt', displayName: '泥土', count: 32, metadata: 0, durabilityUsed: null, maxDurability: null }
+      ]
+    }
+  });
+
+  const inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.name, 'chest');
+  assert.equal(inventory.supported, true);
+  assert.equal(inventory.slots['2'].name, 'minecraft:oak_planks');
+  assert.equal(inventory.slots['10'].count, 32);
+  assert.equal(Object.keys(inventory.slots).length, 2);
+});
+
+test('SET_BOT_INVENTORY with null window clears inventory', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: { id: 3, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [{ slot: 0, name: 'minecraft:stone', displayName: '石头', count: 1, metadata: 0 }] }
+  });
+  assert.ok(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory);
+
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: null
+  });
+  assert.equal(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory, null);
+});
+
+test('PATCH_BOT_INVENTORY merges slot updates and clears emptied slots', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: {
+      id: 7,
+      name: 'chest',
+      supported: true,
+      inventoryStart: 27,
+      inventoryEnd: 54,
+      slots: [
+        { slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 64, metadata: 0 },
+        { slot: 5, name: 'minecraft:dirt', displayName: '泥土', count: 10, metadata: 0 }
+      ]
+    }
+  });
+
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    windowId: 7,
+    slots: {
+      2: { slot: 2, name: 'minecraft:oak_planks', displayName: '橡木木板', count: 63, metadata: 0 },
+      5: null,
+      9: { slot: 9, name: 'minecraft:cobblestone', displayName: '圆石', count: 1, metadata: 0 }
+    }
+  });
+
+  const inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.slots['2'].count, 63);
+  assert.equal(inventory.slots['5'], undefined);
+  assert.equal(inventory.slots['9'].name, 'minecraft:cobblestone');
+  assert.equal(Object.keys(inventory.slots).length, 2);
+});
+
+test('PATCH_BOT_INVENTORY is ignored for stale window ids and missing snapshots', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+
+  // 没有全量快照时，patch 直接忽略（等待 window 事件）
+  const before = state;
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    windowId: 7,
+    slots: { 2: { slot: 2, name: 'minecraft:stone', displayName: '石头', count: 1, metadata: 0 } }
+  });
+  assert.equal(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory, undefined);
+
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: { id: 7, name: 'chest', supported: true, inventoryStart: 27, inventoryEnd: 54, slots: [] }
+  });
+
+  // 窗口 id 不匹配的 patch 忽略
+  const snapshot = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    windowId: 99,
+    slots: { 2: { slot: 2, name: 'minecraft:stone', displayName: '石头', count: 1, metadata: 0 } }
+  });
+  assert.deepEqual(state.backends.byId['backend-1'].bots.byId['bot-1'].inventory, snapshot);
+});
+
+test('inventory survives backend bot list refreshes', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: { id: 3, name: 'inventory', supported: true, inventoryStart: 36, inventoryEnd: 45, slots: [{ slot: 8, name: 'minecraft:diamond', displayName: '钻石', count: 1, metadata: 0 }] }
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }],
+    lastSyncAt: '2026-01-02T00:00:00.000Z'
+  });
+
+  const inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.ok(inventory);
+  assert.equal(inventory.slots['8'].name, 'minecraft:diamond');
+});

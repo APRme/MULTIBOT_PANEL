@@ -1485,3 +1485,82 @@ input[type="checkbox"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- 背包 / 窗口面板 ---------- */
+
+.inventory-panel {
+  gap: 0.5rem;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.inv-slot {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  min-height: 28px;
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+}
+
+.inv-slot:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.inv-slot-empty {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.inv-slot-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-slot-count {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.inv-slot-durability {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.inv-slot-durability::after {
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--durability, 1) * 100%);
+  background: var(--accent);
+}
+
+.inventory-panel .empty-state {
+  padding: 1rem 0;
+}

@@ -128,6 +128,56 @@
     };
   }
 
+  function normalizeInventoryWindow(window) {
+    if (!window || typeof window !== 'object') {
+      return null;
+    }
+
+    const slots = {};
+    if (Array.isArray(window.slots)) {
+      window.slots.forEach((item) => {
+        if (item && Number.isInteger(item.slot)) {
+          slots[String(item.slot)] = item;
+        }
+      });
+    }
+
+    return {
+      id: Number.isInteger(window.id) ? window.id : null,
+      name: typeof window.name === 'string' ? window.name : 'unknown',
+      supported: window.supported !== false,
+      inventoryStart: Number.isInteger(window.inventoryStart) ? window.inventoryStart : 0,
+      inventoryEnd: Number.isInteger(window.inventoryEnd) ? window.inventoryEnd : 0,
+      slots
+    };
+  }
+
+  function applyInventoryPatch(inventory, patch) {
+    if (!inventory || !patch || !patch.slots || typeof patch.slots !== 'object') {
+      return inventory;
+    }
+    if (patch.windowId != null && inventory.id !== patch.windowId) {
+      return inventory;
+    }
+
+    const nextSlots = { ...inventory.slots };
+    Object.keys(patch.slots).forEach((slotKey) => {
+      const item = patch.slots[slotKey];
+      if (item === null || item === undefined) {
+        delete nextSlots[slotKey];
+        return;
+      }
+      const slot = Number.isInteger(item.slot) ? item.slot : Number(slotKey);
+      if (!Number.isInteger(slot) || slot < 0) return;
+      nextSlots[String(slot)] = item;
+    });
+
+    return {
+      ...inventory,
+      slots: nextSlots
+    };
+  }
+
   function getLogEntryKey(entry) {
     if (!entry || typeof entry !== 'object') {
       return `raw:${String(entry)}`;
@@ -329,6 +379,49 @@
         return nextState;
       }
 
+      case 'PATCH_BOT_INVENTORY': {
+        const backend = nextState.backends.byId[action.backendId];
+        if (!backend) return state;
+        const botId = action.botId;
+        if (!botId) return state;
+        const existingBot = backend.bots.byId[botId];
+        if (!existingBot || !existingBot.inventory) {
+          return state;
+        }
+        const patched = applyInventoryPatch(existingBot.inventory, {
+          windowId: action.windowId,
+          slots: action.slots
+        });
+        if (patched === existingBot.inventory || deepEqual(patched, existingBot.inventory)) {
+          return state;
+        }
+        backend.bots.byId[botId] = {
+          ...existingBot,
+          inventory: patched
+        };
+        return nextState;
+      }
+
+      case 'SET_BOT_INVENTORY': {
+        const backend = nextState.backends.byId[action.backendId];
+        if (!backend) return state;
+        const botId = action.botId;
+        if (!botId) return state;
+        const existingBot = backend.bots.byId[botId] || mergeBotSummary(null, { id: botId });
+        const inventory = normalizeInventoryWindow(action.window);
+        if (deepEqual(existingBot.inventory || null, inventory)) {
+          return state;
+        }
+        backend.bots.byId[botId] = {
+          ...existingBot,
+          inventory
+        };
+        if (!backend.bots.allIds.includes(botId)) {
+          backend.bots.allIds.push(botId);
+        }
+        return nextState;
+      }
+
       case 'APPEND_BOT_LOG': {
         const backend = nextState.backends.byId[action.backendId];
         if (!backend) return state;
@@ -466,7 +559,9 @@
     createInitialState,
     reduceState,
     createStore,
-    mergeBotSummary
+    mergeBotSummary,
+    normalizeInventoryWindow,
+    applyInventoryPatch
   };
 
   namespace.state = api;

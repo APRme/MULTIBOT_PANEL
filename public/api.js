@@ -91,6 +91,14 @@
       async getBotDetails(profile, botId) {
         return requestJson(profile, `/api/bots/${encodeURIComponent(botId)}`);
       },
+      async getInventory(profile, botId) {
+        return requestJson(profile, `/api/bots/${encodeURIComponent(botId)}/inventory`);
+      },
+      async closeWindow(profile, botId) {
+        return requestJson(profile, `/api/bots/${encodeURIComponent(botId)}/close-window`, {
+          method: 'POST'
+        });
+      },
       async getInstances(profile) {
         return requestJson(profile, '/api/instances');
       },

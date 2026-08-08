@@ -13,6 +13,7 @@
   const botDetailComponent = namespace.components.botDetail;
   const commandPanelComponent = namespace.components.commandPanel;
   const logsPanelComponent = namespace.components.logsPanel;
+  const inventoryPanelComponent = namespace.components.inventoryPanel;
   const instancePresetsModule = namespace.instancePresets;
   const avatarClient = namespace.skin.createAvatarClient();
   const BOT_LIST_WIDTH_STORAGE_KEY = 'multibot_panel.bot_list_width.v1';
@@ -905,6 +906,58 @@
       }
     }
 
+    async function refreshBotInventory(backendId, botId) {
+      const state = store.getState();
+      const backend = state.backends.byId[backendId];
+      if (!backend || !botId) return;
+
+      try {
+        const response = await apiClient.getInventory(backend, botId);
+        store.dispatch({
+          type: 'SET_BOT_INVENTORY',
+          backendId,
+          botId,
+          window: (response && response.window) || null
+        });
+      } catch (error) {
+        // 快照拉取失败时静默：SSE inventory 事件仍会覆盖数据
+      }
+    }
+
+    async function sendChestCommand(backendId, botId, command) {
+      const backend = store.getState().backends.byId[backendId];
+      if (!backend) return;
+
+      try {
+        const result = await apiClient.sendCommand(backend, botId, command);
+        store.dispatch({
+          type: 'SET_LAST_COMMAND_RESULT',
+          backendId,
+          botId,
+          result
+        });
+      } catch (error) {
+        store.dispatch({
+          type: 'SET_GLOBAL_MESSAGE',
+          message: `物品操作失败: ${error.message}`
+        });
+      }
+    }
+
+    async function closeBotWindow(backendId, botId) {
+      const backend = store.getState().backends.byId[backendId];
+      if (!backend) return;
+
+      try {
+        await apiClient.closeWindow(backend, botId);
+      } catch (error) {
+        store.dispatch({
+          type: 'SET_GLOBAL_MESSAGE',
+          message: `关闭窗口失败: ${error.message}`
+        });
+      }
+    }
+
     function connectSelectedBackendStream() {
       const state = store.getState();
       const backend = getSelectedBackend(state);
@@ -959,6 +1012,10 @@
         });
         resetSseFailureTracking();
         selectFirstBotIfNeeded(store, backendId);
+        const selectedBotId = store.getState().backends.byId[backendId].selectedBotId;
+        if (selectedBotId) {
+          void refreshBotInventory(backendId, selectedBotId);
+        }
         return;
       }
 
@@ -985,6 +1042,27 @@
           botId: event.data.botId,
           log: event.data
         });
+        return;
+      }
+
+      if (event.event === 'inventory' && event.data && event.data.botId) {
+        const data = event.data;
+        if (data.type === 'window') {
+          store.dispatch({
+            type: 'SET_BOT_INVENTORY',
+            backendId,
+            botId: data.botId,
+            window: data.window
+          });
+        } else if (data.type === 'patch') {
+          store.dispatch({
+            type: 'PATCH_BOT_INVENTORY',
+            backendId,
+            botId: data.botId,
+            windowId: data.windowId,
+            slots: data.slots
+          });
+        }
       }
     }
 
@@ -1114,6 +1192,7 @@
         botId
       });
       void loadBotDetails(backend.id, botId, { silent: true });
+      void refreshBotInventory(backend.id, botId);
     }
 
     function selectServer(serverDir) {
@@ -1911,6 +1990,25 @@
           bot: selectedBot
         });
       });
+
+      if (detailSlots && detailSlots.inventoryContainer && selectedBackend && selectedBot) {
+        renderSection('inventory-panel', detailSlots.inventoryContainer, {
+          inventory: selectedBot.inventory || null
+        }, (container) => {
+          inventoryPanelComponent.renderInventoryPanel(container, {
+            inventory: selectedBot.inventory || null,
+            onMoveItem(fromSlot, toSlot, count) {
+              const command = count == null
+                ? `chest move ${fromSlot} ${toSlot}`
+                : `chest move ${fromSlot} ${toSlot} ${count}`;
+              void sendChestCommand(selectedBackend.id, selectedBot.id, command);
+            },
+            onCloseWindow() {
+              void closeBotWindow(selectedBackend.id, selectedBot.id);
+            }
+          });
+        });
+      }
 
       if (detailSlots && detailSlots.commandContainer && selectedBackend && selectedBot) {
         renderSection('command-panel', detailSlots.commandContainer, {

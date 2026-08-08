@@ -32,6 +32,7 @@
           </div>
         </div>
         <div data-slot="logs-panel"></div>
+        <div data-slot="inventory-panel"></div>
         <div class="detail-bottom">
           <div class="panel-section stack detail-overview">
             <div class="section-heading-copy">
@@ -70,6 +71,7 @@
 
     return {
       logsContainer: container.querySelector('[data-slot="logs-panel"]'),
+      inventoryContainer: container.querySelector('[data-slot="inventory-panel"]'),
       commandContainer: container.querySelector('[data-slot="command-panel"]')
     };
   }
