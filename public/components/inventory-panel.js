@@ -32,10 +32,36 @@
   // 精确对齐布局：槽位按背景图像素坐标定位（容器区 + 背包区 9x3 + 快捷栏 9）
   const SLOT_LAYOUTS = {
     chest: { image: 'chest.png', width: 176, height: 167, containerRows: 3, containerY: 17, inventoryY: 83, hotbarY: 145 },
-    'large-chest': { image: 'generic_54.png', width: 176, height: 222, containerRows: 6, containerY: 17, inventoryY: 137, hotbarY: 199 }
+    'large-chest': { image: 'generic_54.png', width: 176, height: 222, containerRows: 6, containerY: 17, inventoryY: 137, hotbarY: 199 },
+    // 物品栏：槽位分布不规则，用显式坐标表（prismarine 槽位顺序，1.21.11 纹理实测中心坐标）
+    // 0=合成结果 1-4=合成2x2 5-8=盔甲 9-35=背包 36-44=快捷栏；45=副手（纹理无槽位，不渲染）
+    inventory: {
+      image: 'inventory.png',
+      width: 176,
+      height: 166,
+      sections: [
+        { start: 0, end: 1, xs: [161.5], ys: [35.5] },
+        { start: 1, end: 5, xs: [105.5, 123.5, 105.5, 123.5], ys: [25.5, 25.5, 43.5, 43.5] },
+        { start: 5, end: 9, xs: [15.5, 15.5, 15.5, 15.5], ys: [15.5, 33.5, 51.5, 69.5] },
+        { start: 9, end: 36, gridX: 15.5, gridY: 91.5, cols: 9, step: 18 },
+        { start: 36, end: 45, gridX: 15.5, gridY: 149.5, cols: 9, step: 18 }
+      ]
+    }
   };
 
   function getSlotPixelPosition(slot, layout, inventory) {
+    if (layout.sections) {
+      const section = layout.sections.find((item) => slot >= item.start && slot < item.end);
+      if (!section) return null;
+      const index = slot - section.start;
+      if (Array.isArray(section.xs)) {
+        if (index >= section.xs.length) return null;
+        return { x: section.xs[index], y: section.ys[index], w: 18, h: 18 };
+      }
+      const col = index % section.cols;
+      const row = Math.floor(index / section.cols);
+      return { x: section.gridX + col * section.step, y: section.gridY + row * section.step, w: 18, h: 18 };
+    }
     if (slot < (inventory && inventory.inventoryStart)) {
       const row = Math.floor(slot / 9);
       const col = slot % 9;
@@ -164,6 +190,7 @@
     }
     return slots.map((entry) => {
       const pos = getSlotPixelPosition(entry.slot, layout, inventory);
+      if (!pos) return ''; // 无位置的槽位（如物品栏副手 45）不渲染
       const style = [
         `left:${toPercent(pos.x, layout.width)}`,
         `top:${toPercent(pos.y, layout.height)}`,

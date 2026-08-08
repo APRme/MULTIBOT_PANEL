@@ -184,3 +184,35 @@ test('unknown windows with matching assets fall back to decorated grid', () => {
   assert.match(html, /background-image:url\('assets\/gui\/smoker\.png'\)/);
   assert.match(html, /未识别窗口/);
 });
+
+test('inventory slots follow the prismarine slot order table', () => {
+  const layout = inventoryPanel.SLOT_LAYOUTS.inventory;
+  const inv = { inventoryStart: 9, inventoryEnd: 46 };
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(0, layout, inv), { x: 161.5, y: 35.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(1, layout, inv), { x: 105.5, y: 25.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(4, layout, inv), { x: 123.5, y: 43.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(5, layout, inv), { x: 15.5, y: 15.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(8, layout, inv), { x: 15.5, y: 69.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(9, layout, inv), { x: 15.5, y: 91.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(17, layout, inv), { x: 159.5, y: 91.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(35, layout, inv), { x: 159.5, y: 127.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(36, layout, inv), { x: 15.5, y: 149.5, w: 18, h: 18 });
+  assert.deepEqual(inventoryPanel.getSlotPixelPosition(44, layout, inv), { x: 159.5, y: 149.5, w: 18, h: 18 });
+  assert.equal(inventoryPanel.getSlotPixelPosition(45, layout, inv), null);
+});
+
+test('inventory window renders the exact-aligned background container', () => {
+  const html = inventoryPanel.renderInventoryHtml({
+    id: 0,
+    name: 'inventory',
+    supported: true,
+    inventoryStart: 9,
+    inventoryEnd: 46,
+    slots: { '0': { slot: 0, name: 'minecraft:diamond', displayName: '钻石', count: 1, metadata: 0 } }
+  });
+  assert.match(html, /inv-bg/);
+  assert.match(html, /background-image:url\('assets\/gui\/inventory\.png'\)/);
+  assert.match(html, /aspect-ratio:176\/166/);
+  assert.match(html, /data-slot="0"/);
+  assert.doesNotMatch(html, /data-slot="45"/);
+});
