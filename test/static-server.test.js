@@ -287,6 +287,7 @@ test('content security policy allows data and blob images for avatars', async ()
     const response = await fetch(`${baseUrl}/`);
     const csp = response.headers.get('content-security-policy') || '';
     assert.match(csp, /img-src 'self' data: blob:/);
+    assert.match(csp, /style-src 'self' 'unsafe-inline'/);
     assert.match(csp, /default-src 'self'/);
   } finally {
     await close(server);

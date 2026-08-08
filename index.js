@@ -58,7 +58,7 @@ function sendText(res, statusCode, text) {
 function setSecurityHeaders(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' http: https:; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' http: https:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'");
   res.setHeader('X-Frame-Options', 'DENY');
 }
 
