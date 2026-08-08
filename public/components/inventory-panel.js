@@ -281,6 +281,22 @@
     return null;
   }
 
+  function findNearestSlot(grid, clientX, clientY) {
+    let best = null;
+    let bestDist = Infinity;
+    grid.querySelectorAll('.inv-slot').forEach((element) => {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dist = Math.hypot(clientX - centerX, clientY - centerY);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = element;
+      }
+    });
+    return best && bestDist <= 16 ? Number(best.getAttribute('data-slot')) : null;
+  }
+
   function bindSlotDragAndDrop(container, props) {
     const grid = container.querySelector('[data-role="inventory-grid"]');
     if (!grid) return;
@@ -315,13 +331,18 @@
     });
 
     grid.addEventListener('drop', (event) => {
+      event.preventDefault();
+      if (dragFrom === null || typeof props.onMoveItem !== 'function') return;
+
       const slotEl = event.target && event.target.closest
         ? event.target.closest('.inv-slot')
         : null;
-      if (!slotEl) return;
-      event.preventDefault();
-      if (dragFrom === null || typeof props.onMoveItem !== 'function') return;
-      const toSlot = Number(slotEl.getAttribute('data-slot'));
+      let toSlot = slotEl ? Number(slotEl.getAttribute('data-slot')) : null;
+      if (toSlot == null || !Number.isInteger(toSlot) || toSlot < 0) {
+        // 落点在槽位外时吸附最近的槽位（16px 内），避免拖到副手等小槽边缘被忽略
+        toSlot = findNearestSlot(grid, event.clientX, event.clientY);
+      }
+      if (toSlot == null) return;
       if (toSlot === dragFrom) {
         dragFrom = null;
         return;
