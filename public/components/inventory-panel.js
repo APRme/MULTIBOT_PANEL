@@ -2,28 +2,13 @@
   const namespace = global.MultibotPanel = global.MultibotPanel || {};
   const formatters = namespace.formatters;
 
-  const ICON_INDEX_URL = 'assets/items-index.json';
   const ICON_DIR = 'assets/items';
-  let iconIndex = null;
-  let iconIndexPromise = null;
-
-  function loadIconIndex() {
-    if (!iconIndexPromise) {
-      iconIndexPromise = fetch(ICON_INDEX_URL)
-        .then((response) => (response.ok ? response.json() : []))
-        .catch(() => []);
-    }
-    return iconIndexPromise;
-  }
-
-  function setIconIndex(index) {
-    iconIndex = Array.isArray(index) ? index : null;
-  }
 
   function getItemIconUrl(item) {
-    if (!item || !item.name || !iconIndex) return '';
-    const file = `${String(item.name).replace(/^minecraft:/, '')}.png`;
-    return iconIndex.includes(file) ? `${ICON_DIR}/${file}` : '';
+    if (!item || !item.name) return '';
+    const name = String(item.name).replace(/^minecraft:/, '');
+    if (!name) return '';
+    return `${ICON_DIR}/${name}.png`;
   }
 
   const WINDOW_LABELS = {
@@ -193,9 +178,6 @@
     }
 
     const iconUrl = getItemIconUrl(item);
-    const contentHtml = iconUrl
-      ? `<img class="inv-item-icon" src="${formatters.escapeHtml(iconUrl)}" alt="" decoding="async" draggable="false">`
-      : `<span class="inv-slot-label">${formatters.escapeHtml(getItemShortLabel(item))}</span>`;
     const ratio = getDurabilityRatio(item);
     const durabilityHtml = ratio !== null
       ? `<span class="inv-slot-durability" style="--durability:${ratio.toFixed(3)}"></span>`
@@ -203,10 +185,15 @@
     const countHtml = Number.isInteger(item.count) && item.count > 1
       ? `<span class="inv-slot-count">${item.count}</span>`
       : '';
+    // 文字 label 垫底，img 图标覆盖其上；图标加载失败（404）时由 error 事件隐藏 img 露出文字
+    const iconHtml = iconUrl
+      ? `<img class="inv-item-icon" src="${formatters.escapeHtml(iconUrl)}" alt="" decoding="async" draggable="false">`
+      : '';
 
     return `
       <div class="inv-slot" data-slot="${index}" draggable="true" title="${formatters.escapeHtml(getItemTooltip(item))}"${styleAttr}>
-        ${contentHtml}
+        <span class="inv-slot-label">${formatters.escapeHtml(getItemShortLabel(item))}</span>
+        ${iconHtml}
         ${countHtml}
         ${durabilityHtml}
       </div>
@@ -367,13 +354,13 @@
 
     bindSlotDragAndDrop(container, props);
 
-    // 图标索引异步就绪后，若当前有物品但还没有图标，重绘一次补上
-    loadIconIndex().then(() => {
-      if (!iconIndex) return;
-      const grid = container.querySelector('[data-role="inventory-grid"]');
-      const hasItems = props.inventory && Object.keys(props.inventory.slots || {}).length > 0;
-      if (grid && hasItems && !grid.querySelector('.inv-item-icon')) {
-        renderInventoryPanel(container, props);
+    // 图标 404 时隐藏 img，露出垫底的文字 label
+    container.querySelectorAll('.inv-item-icon').forEach((image) => {
+      image.addEventListener('error', () => {
+        image.hidden = true;
+      }, { once: true });
+      if (image.complete && image.naturalWidth === 0) {
+        image.hidden = true;
       }
     });
   }
@@ -383,7 +370,6 @@
     BACKGROUND_IMAGES,
     FALLBACK_BACKGROUND_IMAGES,
     SLOT_LAYOUTS,
-    ICON_INDEX_URL,
     ICON_DIR,
     getWindowLabel,
     getSlotItems,
@@ -394,8 +380,6 @@
     getItemShortLabel,
     getDurabilityRatio,
     getItemTooltip,
-    loadIconIndex,
-    setIconIndex,
     getItemIconUrl,
     renderSlotHtml,
     renderInventoryHtml,
