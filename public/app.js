@@ -2002,6 +2002,13 @@
           inventoryPanelComponent.renderInventoryPanel(container, {
             inventory: selectedBot.inventory || null,
             onMoveItem(fromSlot, toSlot, count) {
+              if (!Number.isInteger(fromSlot) || !Number.isInteger(toSlot) || fromSlot < 0 || toSlot < 0) {
+                store.dispatch({
+                  type: 'SET_GLOBAL_MESSAGE',
+                  message: `无效的槽位参数: ${fromSlot} -> ${toSlot}`
+                });
+                return;
+              }
               const command = count == null
                 ? `chest move ${fromSlot} ${toSlot}`
                 : `chest move ${fromSlot} ${toSlot} ${count}`;
