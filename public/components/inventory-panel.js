@@ -322,10 +322,7 @@
     });
 
     grid.addEventListener('dragover', (event) => {
-      const slotEl = event.target && event.target.closest
-        ? event.target.closest('.inv-slot')
-        : null;
-      if (!slotEl) return;
+      // 整个网格区域都可放置：落点由 drop 的吸附逻辑决定，避免拖到槽位边缘时显示拒绝符号
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
     });
