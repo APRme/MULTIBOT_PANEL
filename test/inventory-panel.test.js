@@ -120,6 +120,24 @@ test('inventory html renders grid, close button and unsupported hint', () => {
   assert.match(unsupported, /关闭窗口/);
 });
 
+test('slot items cover layout sections even when inventoryEnd excludes offhand', () => {
+  const inventory = {
+    id: 0,
+    name: 'inventory',
+    supported: true,
+    inventoryStart: 9,
+    inventoryEnd: 45,
+    slots: {}
+  };
+  const layout = inventoryPanel.getWindowLayout(inventory);
+  const items = inventoryPanel.getSlotItems(inventory, layout);
+  assert.ok(items.some((entry) => entry.slot === 45), '副手槽应在渲染范围内');
+
+  const html = inventoryPanel.renderInventoryHtml(inventory);
+  assert.match(html, /data-slot="45"/);
+  assert.match(html, /data-slot="0"/);
+});
+
 test('drop count resolution honors shift and alt modifiers', () => {
   const inventory = createChestInventory();
   assert.equal(inventoryPanel.resolveDropCount(inventory, 2, {}), null);

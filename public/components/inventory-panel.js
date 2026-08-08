@@ -116,12 +116,22 @@
 
   const MAX_SLOT_RENDER = 200;
 
-  function getSlotItems(inventory) {
+  function getSlotItems(inventory, layout) {
     if (!inventory) return [];
     const start = Number.isInteger(inventory.inventoryStart) ? inventory.inventoryStart : 0;
     const end = Number.isInteger(inventory.inventoryEnd) ? inventory.inventoryEnd : 0;
+    // 渲染范围覆盖布局表定义的最大槽位：即使后端 inventoryEnd 不含副手（如 45），
+    // 布局表内的 45 号副手槽也要渲染，否则拖拽吸附不到它
+    let total = Math.max(end, start);
+    if (layout && Array.isArray(layout.sections)) {
+      layout.sections.forEach((section) => {
+        if (Number.isInteger(section.end) && section.end > total) {
+          total = section.end;
+        }
+      });
+    }
     // 上限保护：异常 window 数据不应生成海量空槽 DOM
-    const total = Math.min(Math.max(end, start), MAX_SLOT_RENDER);
+    total = Math.min(total, MAX_SLOT_RENDER);
     const items = [];
     for (let slot = 0; slot < total; slot += 1) {
       items.push({
@@ -231,10 +241,10 @@
     }
 
     const label = getWindowLabel(inventory.name, inventory.supported);
-    const slots = getSlotItems(inventory);
+    const layout = getWindowLayout(inventory);
+    const slots = getSlotItems(inventory, layout);
     const occupiedCount = slots.filter((entry) => entry.item).length;
     const unsupported = inventory.supported === false;
-    const layout = getWindowLayout(inventory);
     const backgroundImage = getBackgroundImage(inventory);
     const hint = unsupported
       ? '<p class="helper">该窗口类型面板不认识，按格子列表显示；可点击“关闭窗口”退出。</p>'
