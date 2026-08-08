@@ -291,20 +291,32 @@
     return null;
   }
 
-  function findNearestSlot(grid, clientX, clientY) {
-    let best = null;
-    let bestDist = Infinity;
+  const SNAP_DISTANCE = 16;
+
+  function collectSlotCenters(grid) {
+    const centers = [];
     grid.querySelectorAll('.inv-slot').forEach((element) => {
       const rect = element.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const dist = Math.hypot(clientX - centerX, clientY - centerY);
+      centers.push({
+        slot: Number(element.getAttribute('data-slot')),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      });
+    });
+    return centers;
+  }
+
+  function findNearestSlotByCenters(centers, clientX, clientY) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const center of centers) {
+      const dist = Math.hypot(clientX - center.x, clientY - center.y);
       if (dist < bestDist) {
         bestDist = dist;
-        best = element;
+        best = center.slot;
       }
-    });
-    return best && bestDist <= 16 ? Number(best.getAttribute('data-slot')) : null;
+    }
+    return bestDist <= SNAP_DISTANCE ? best : null;
   }
 
   function bindSlotDragAndDrop(container, props) {
@@ -312,6 +324,7 @@
     if (!grid) return;
 
     let dragFrom = null;
+    let slotCenters = null;
 
     grid.addEventListener('dragstart', (event) => {
       const slotEl = event.target && event.target.closest
@@ -327,12 +340,17 @@
         return;
       }
       dragFrom = fromSlot;
+      slotCenters = collectSlotCenters(grid);
       event.dataTransfer.setData('text/plain', String(fromSlot));
       event.dataTransfer.effectAllowed = 'move';
     });
 
     grid.addEventListener('dragover', (event) => {
-      // 整个网格区域都可放置：落点由 drop 的吸附逻辑决定，避免拖到槽位边缘时显示拒绝符号
+      // 只在吸附范围内放行（move 光标）：远离所有槽位的图片内区域显示拒绝光标
+      const nearest = slotCenters
+        ? findNearestSlotByCenters(slotCenters, event.clientX, event.clientY)
+        : null;
+      if (nearest == null) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
     });
@@ -346,8 +364,12 @@
         : null;
       let toSlot = slotEl ? Number(slotEl.getAttribute('data-slot')) : null;
       if (toSlot == null || !Number.isInteger(toSlot) || toSlot < 0) {
-        // 落点在槽位外时吸附最近的槽位（16px 内），避免拖到副手等小槽边缘被忽略
-        toSlot = findNearestSlot(grid, event.clientX, event.clientY);
+        // 落点在槽位外时吸附最近的槽位，避免拖到副手等小槽边缘被忽略
+        toSlot = findNearestSlotByCenters(
+          slotCenters || collectSlotCenters(grid),
+          event.clientX,
+          event.clientY
+        );
       }
       if (toSlot == null) return;
       if (toSlot === dragFrom) {
@@ -361,6 +383,7 @@
 
     grid.addEventListener('dragend', () => {
       dragFrom = null;
+      slotCenters = null;
     });
   }
 
