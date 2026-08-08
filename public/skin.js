@@ -5,6 +5,9 @@
   const FACE_X = 8;
   const FACE_Y = 8;
   const FACE_SIZE = 8;
+  const OVERLAY_X = 40;
+  const OVERLAY_Y = 8;
+  const OVERLAY_MIN_HEIGHT = 64;
   const OUTPUT_SIZE = 40;
   const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const FAILURE_TTL_MS = 5 * 60 * 1000;
@@ -56,6 +59,10 @@
       now - entry.failedAt < failureTtlMs;
   }
 
+  function shouldDrawOverlay(bitmapHeight) {
+    return Number(bitmapHeight) >= OVERLAY_MIN_HEIGHT;
+  }
+
   async function cropFaceToDataUrl(blob) {
     const bitmap = await createImageBitmap(blob);
     try {
@@ -64,9 +71,13 @@
       canvas.height = OUTPUT_SIZE;
       const context = canvas.getContext('2d');
       if (!context) return '';
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = 'high';
+      // 像素画保持硬边：整数倍放大时禁用平滑插值，避免出现半透明过渡色
+      context.imageSmoothingEnabled = false;
       context.drawImage(bitmap, FACE_X, FACE_Y, FACE_SIZE, FACE_SIZE, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+      // 64×64 双层皮肤：头部外层（帽子/头饰）位于 (40,8)，叠加后由透明像素透出本体
+      if (shouldDrawOverlay(bitmap.height)) {
+        context.drawImage(bitmap, OVERLAY_X, OVERLAY_Y, FACE_SIZE, FACE_SIZE, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+      }
       return canvas.toDataURL('image/png');
     } finally {
       if (typeof bitmap.close === 'function') bitmap.close();
@@ -150,6 +161,9 @@
     FACE_X,
     FACE_Y,
     FACE_SIZE,
+    OVERLAY_X,
+    OVERLAY_Y,
+    OVERLAY_MIN_HEIGHT,
     OUTPUT_SIZE,
     DEFAULT_TTL_MS,
     FAILURE_TTL_MS,
@@ -157,6 +171,7 @@
     parseAvatarCache,
     isCacheFresh,
     isDebounced,
+    shouldDrawOverlay,
     cropFaceToDataUrl,
     createAvatarClient
   };

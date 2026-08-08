@@ -5,6 +5,7 @@ const {
   parseAvatarCache,
   isCacheFresh,
   isDebounced,
+  shouldDrawOverlay,
   createAvatarClient,
   DEFAULT_TTL_MS,
   FAILURE_TTL_MS
@@ -153,6 +154,13 @@ test('client rejects invalid usernames without fetching', async () => {
   const client = createAvatarClient({ storage: createMemoryStorage(), fetchFn: stub.fetchFn });
   assert.equal(await client.getAvatar('player@example.com'), null);
   assert.equal(stub.calls.length, 0);
+});
+
+test('overlay drawing is limited to 64px tall double-layer skins', () => {
+  assert.equal(shouldDrawOverlay(64), true);
+  assert.equal(shouldDrawOverlay(32), false);
+  assert.equal(shouldDrawOverlay(0), false);
+  assert.equal(shouldDrawOverlay('64'), true);
 });
 
 test('client works without storage', async () => {

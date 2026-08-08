@@ -325,7 +325,7 @@ Bot 列表的头像来自 Minecraft 正版皮肤，由面板进程代理官方�
 1. `api.minecraftservices.com/minecraft/profile/lookup/name/<玩家名>` 拿 UUID（微软官方接口，替代即将弃用的 `api.mojang.com`）
 2. `sessionserver.mojang.com/session/minecraft/profile/<uuid>` 拿皮肤纹理地址
 3. 面板进程下载皮肤 PNG 并做 24 小时进程内缓存，通过 `GET /avatar/:username`（同源）返回给浏览器
-4. 浏览器用 canvas 裁出 8×8 头部区域放大为 40×40，转成 `data:` URL 存入 `localStorage`（默认 30 天，TTL 与尺寸定义在 `public/skin.js`）
+4. 浏览器用 canvas 裁出 8×8 头部区域放大为 40×40，转成 `data:` URL 存入 `localStorage`（默认 30 天，TTL 与尺寸定义在 `public/skin.js`）。放大使用整数倍无平滑插值，保持像素硬边；64×64 双层皮肤会额外叠加 `(40,8)` 处的头部外层（帽子/头饰），64×32 老皮肤不绘制外层
 
 要点：
 
