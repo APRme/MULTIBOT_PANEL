@@ -329,9 +329,49 @@ Bot 详情区可以实时查看当前背包与打开的窗口（箱子、大箱�
 - 操作：
   - **拖拽移动**：把物品拖到目标槽即移动整组；按住 **Shift** 拖 = 半组、**Alt/Ctrl** 拖 = 1 个（走后端 `chest move <源> <目标> [数量]` 命令）
   - **关闭窗口**：一键调 `POST /api/bots/:id/close-window`（幂等，无窗口也返回 ok）
-- 物品暂时以名称首字 + 数量 + 耐久条显示（协议不传图片）；图标方案待定，渲染层已预留接口，不影响协议
+- 物品图标从本地提取的图标集（`public/assets/items/`，见下文「纹理素材提取」）加载，缺失时回退显示名称首字 + 数量 + 耐久条（协议不传图片）
 
 依赖后端 `WindowFeature`（MULTIBOT `src/features/window/`）提供的事件与端点，后端版本需包含该模块。
+
+## 纹理素材提取（Mojang 资产，本地提取，不入库）
+
+面板的 GUI 背景与物品图标素材**不随仓库分发**——它们来自你本地安装的正版 Minecraft 客户端，`public/assets/` 已加入 `.gitignore`。仓库只提供提取脚本（`scripts/`）与槽位坐标布局表（`public/components/inventory-panel.js` 的 `SLOT_LAYOUTS`），你需要自行从本地客户端提取。
+
+### 素材来源
+
+所有纹理都位于版本 jar 内（本质是 zip 归档，路径 `%APPDATA%\.minecraft\versions\<版本>\<版本>.jar`）：
+
+- GUI 容器纹理：`assets/minecraft/textures/gui/container/*.png`——`inventory.png`（背包）、`generic_54.png`（双箱子）、`crafting_table.png`（工作台）、`furnace.png`（熔炉）、`smoker.png`、`blast_furnace.png`、`dispenser.png`、`hopper.png`、`shulker_box.png` 等
+- 物品图标：`assets/minecraft/textures/item/*.png` 与 `assets/minecraft/textures/block/*.png`（方块类物品的图标来自方块贴图，如橡木木板、火把）
+
+### 提取步骤
+
+1. 把上面 GUI 容器纹理从版本 jar 解压到 `public/assets/gui/`（保留 jar 内原样 PNG）
+2. 裁剪到实际绘制区域（去掉 256×256 图集四周透明边距，保证背景图与槽位布局表 1:1 坐标系，否则槽位百分比定位会错位）：
+
+   ```powershell
+   python scripts/crop-gui-textures.py
+   ```
+
+3. 生成单箱子背景（1.21 起单箱子没有静态纹理、由游戏代码绘制，故从双箱子 `generic_54.png` 按标准条带重排拼出 `chest.png` 176×167）：
+
+   ```powershell
+   python scripts/make-chest-png.py
+   ```
+
+4. 提取物品图标并生成索引（方块物品图标取方块贴图，同名时 item 优先）：
+
+   ```powershell
+   python scripts/extract-item-icons.py <你的版本jar路径>
+   ```
+
+### 槽位坐标从哪来
+
+`analyze-inventory-png.py` 可扫描 `inventory.png` 里全部槽位：槽内为 ~128 灰像素，做连通域聚类后取质心即槽中心坐标，用于核对/生成 `SLOT_LAYOUTS` 布局表（背景图坐标系 = 绘制区域 176×166，槽位从 `(7,17)` 起按 18px 步进，1.8+ 未变）。
+
+### 版权说明
+
+纹理与游戏资产版权归 Mojang AB / Microsoft。本仓库不包含任何 Mojang 纹理图片，提取脚本与坐标数据仅用于个人学习用途；请勿将提取出的素材用于再分发或商业用途。
 
 ## 头像获取
 
