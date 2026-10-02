@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
 };
 
 // 版本号规则见 AGENTS.md：V<年份两位>.<自然季度>.<小版本>，小版本每提交一次加 1、跨年归零。
-const PANEL_VERSION = 'V26.4.43';
+const PANEL_VERSION = 'V26.4.44';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',

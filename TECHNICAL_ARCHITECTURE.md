@@ -43,7 +43,7 @@ MULTIBOT
 
 1. 读取 `panel.config.json`
 2. 创建一个 `http.createServer(...)`
-3. 对 `GET /healthz` 返回 `{ ok: true, title }`
+3. 对 `GET /healthz` 返回 `{ ok: true, title, version }`
 4. 对其他 `GET` / `HEAD` 请求，从 `public/` 目录返回静态文件
 
 这里有几个设计点：
@@ -194,6 +194,15 @@ MULTIBOT
 - 任何一层改动都会同步到同一份待保存草稿
 - 保存时仍然是按完整 JSON 文件替换
 - 组件重绘或后端轮询时，`app.js` 会尽量恢复当前草稿、滚动位置和焦点
+
+保存前会做一层字段级校验，命中即拒绝保存并给出中文提示，避免写出让后端配置加载直接失败的值：
+
+- `viewDistance` 必须是 ≥1 的整数（mineflayer 的字符串档位按 `tiny=6` / `short=8` / `normal=10` / `far=12` 等效折算显示）
+- `server.json` 启用 `openAuth` 时，`host` / `port` / `auth`（必须 `microsoft`）/ `version`（必须 `1.21.11`）必须满足后端强约束；此时实例级同名连接字段不再生效，面板会置灰并说明
+- `teleportPromptMatchers.*` 每条须为合法正则、以 `^` 开头 `$` 结尾、≤500 字符、每组 ≤20 条，`tpa` / `tpahere` 还需包含 `(?<sender>`
+- `restartDelayScheduleMs` 必须是非空非负整数数组，`restartDelayScheduleRepeatLast` 必须是布尔值
+
+只在 `server.json` 顶层生效的字段（`restartDelayScheduleMs`、`restartDelayScheduleRepeatLast`、`openAuth.*`、`teleportPromptMatchers.*`），面板固定写顶层，不跟随旧式 `connection` 包裹；多级重连开启时会同时清除顶层与 `connection` 两处的 `restartDelayMs`。
 
 标签本身是组件级 UI 状态：
 
