@@ -130,14 +130,61 @@ test('instance editor drops unwired behavior fields and exposes inventory handli
   assert.match(html, /data-json-path="capabilities\.inventoryHandling"/);
 });
 
-test('openAuth locks the per-instance connection fields', () => {
-  function getBotPanel(html) {
-    return html.slice(html.indexOf('data-editor-panel="bot"'), html.indexOf('data-editor-panel="json"'));
-  }
+const FEATURE_GROUP_PATHS = [
+  'attack.autoAttack',
+  'attack.attackRange',
+  'attack.attackInterval',
+  'attack.targetFilter.excludePlayers',
+  'attack.targetFilter.excludeItems',
+  'attack.targetFilter.targetTypes',
+  'monitoring.enabled',
+  'monitoring.intervalSeconds',
+  'monitoring.targetTypes',
+  'blockBreakDetection.enabled',
+  'blockBreakDetection.logToConsole',
+  'blockBreakDetection.logToFile',
+  'blockBreakDetection.logFilePath',
+  'blockBreakDetection.excludeCreativeMode',
+  'blockBreakDetection.alertTrustedPlayers',
+  'blockBreakDetection.monitoredBlocks',
+  'behavior.physicsStandby',
+  'behavior.lockAfterExpireCommand',
+  'chat.unknownWhisperReply',
+  'autoRestart'
+];
 
+function getEditorPanel(html, panelId, nextPanelId) {
+  return html.slice(html.indexOf(`data-editor-panel="${panelId}"`), html.indexOf(`data-editor-panel="${nextPanelId}"`));
+}
+
+test('feature groups are exposed in both the shared defaults and the current instance tab', () => {
+  const html = instancesComponent.renderEditor(createEditor('edit'), 'defaults');
+  const panels = [
+    { root: 'defaultBotJson', panel: getEditorPanel(html, 'defaults', 'bot') },
+    { root: 'botJson', panel: getEditorPanel(html, 'bot', 'json') }
+  ];
+
+  for (const { root, panel } of panels) {
+    for (const fieldPath of FEATURE_GROUP_PATHS) {
+      const escaped = fieldPath.replace(/\./g, '\\.');
+      assert.match(
+        panel,
+        new RegExp(`data-json-field="${root}"[^>]*data-json-path="${escaped}"`),
+        `${root} missing ${fieldPath}`
+      );
+      assert.equal(
+        (panel.match(new RegExp(`data-json-path="${escaped}"`, 'g')) || []).length,
+        1,
+        `${fieldPath} should be rendered exactly once in the ${root} panel`
+      );
+    }
+  }
+});
+
+test('openAuth locks the per-instance connection fields', () => {
   const lockedEditor = createEditor('edit');
   lockedEditor.draft.serverJson = JSON.stringify({ openAuth: { enabled: true } });
-  const lockedBotPanel = getBotPanel(instancesComponent.renderEditor(lockedEditor, 'bot'));
+  const lockedBotPanel = getEditorPanel(instancesComponent.renderEditor(lockedEditor, 'bot'), 'bot', 'json');
 
   assert.match(lockedBotPanel, /openAuth/);
   for (const fieldPath of ['host', 'port', 'auth', 'version']) {
@@ -146,7 +193,7 @@ test('openAuth locks the per-instance connection fields', () => {
     assert.match(tag[0], /disabled/, `${fieldPath} should be disabled while openAuth is enabled`);
   }
 
-  const unlockedBotPanel = getBotPanel(instancesComponent.renderEditor(createEditor('edit'), 'bot'));
+  const unlockedBotPanel = getEditorPanel(instancesComponent.renderEditor(createEditor('edit'), 'bot'), 'bot', 'json');
   const unlockedHost = unlockedBotPanel.match(/<[^>]*data-json-path="host"[^>]*>/);
   assert.doesNotMatch(unlockedHost[0], /disabled/);
 });

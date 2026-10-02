@@ -159,6 +159,52 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function getJsonListValue(object, pathText) {
+    const value = getJsonPathValue(object, pathText);
+    return Array.isArray(value) ? value : [];
+  }
+
+  // 下面三组功能字段同时出现在“共享默认”和“当前实例”两个标签，共用同一份定义避免两边漂移。
+  function renderAttackFields(fieldRoot, sourceObject) {
+    return `
+      ${renderJsonBooleanField(fieldRoot, 'attack.autoAttack', '自动攻击', getJsonPathValue(sourceObject, 'attack.autoAttack') === true, '自动攻击附近目标')}
+      ${renderJsonNumberField(fieldRoot, 'attack.attackRange', '攻击半径', getJsonPathValue(sourceObject, 'attack.attackRange') ?? 3, '格；小于等于 0 时回落后端默认 3', '0.1')}
+      ${renderJsonNumberField(fieldRoot, 'attack.attackInterval', '攻击间隔', getJsonPathValue(sourceObject, 'attack.attackInterval') ?? 2000, '毫秒；小于等于 0 时回落后端默认 2000', '1')}
+      ${renderJsonBooleanField(fieldRoot, 'attack.targetFilter.excludePlayers', '排除玩家', getJsonPathValue(sourceObject, 'attack.targetFilter.excludePlayers') === true, '默认不排除玩家')}
+      ${renderJsonBooleanField(fieldRoot, 'attack.targetFilter.excludeItems', '排除掉落物', getJsonPathValue(sourceObject, 'attack.targetFilter.excludeItems') !== false, '默认排除掉落物与经验球')}
+      ${renderJsonListField(fieldRoot, 'attack.targetFilter.targetTypes', '目标类型白名单', getJsonListValue(sourceObject, 'attack.targetFilter.targetTypes'), '一行一个实体类型；留空=全部匹配')}
+    `;
+  }
+
+  function renderMonitoringFields(fieldRoot, sourceObject) {
+    return `
+      ${renderJsonBooleanField(fieldRoot, 'monitoring.enabled', '启用实体监控', getJsonPathValue(sourceObject, 'monitoring.enabled') === true, '监控流浪商人等实体')}
+      ${renderJsonNumberField(fieldRoot, 'monitoring.intervalSeconds', '扫描间隔', getJsonPathValue(sourceObject, 'monitoring.intervalSeconds') ?? 10, '秒；小于等于 0 时回落后端默认 10', '1')}
+      ${renderJsonListField(fieldRoot, 'monitoring.targetTypes', '监控目标类型', getJsonListValue(sourceObject, 'monitoring.targetTypes'), '一行一个实体类型；留空=只匹配 mob')}
+    `;
+  }
+
+  function renderBlockBreakDetectionFields(fieldRoot, sourceObject) {
+    return `
+      ${renderJsonBooleanField(fieldRoot, 'blockBreakDetection.enabled', '启用方块破坏监控', getJsonPathValue(sourceObject, 'blockBreakDetection.enabled') === true, '需要实体处理与地形处理都开启')}
+      ${renderJsonBooleanField(fieldRoot, 'blockBreakDetection.logToConsole', '打印到控制台', getJsonPathValue(sourceObject, 'blockBreakDetection.logToConsole') !== false, '默认开启')}
+      ${renderJsonBooleanField(fieldRoot, 'blockBreakDetection.logToFile', '写入日志文件', getJsonPathValue(sourceObject, 'blockBreakDetection.logToFile') === true, '默认关闭')}
+      ${renderJsonTextField(fieldRoot, 'blockBreakDetection.logFilePath', '日志文件路径', getJsonPathValue(sourceObject, 'blockBreakDetection.logFilePath') || '', '相对 bot 目录', './block-break.log')}
+      ${renderJsonBooleanField(fieldRoot, 'blockBreakDetection.excludeCreativeMode', '忽略创造模式', getJsonPathValue(sourceObject, 'blockBreakDetection.excludeCreativeMode') !== false, '默认忽略创造模式破坏')}
+      ${renderJsonListField(fieldRoot, 'blockBreakDetection.alertTrustedPlayers', '私聊提醒名单', getJsonListValue(sourceObject, 'blockBreakDetection.alertTrustedPlayers'), '一行一个玩家名')}
+      ${renderJsonListField(fieldRoot, 'blockBreakDetection.monitoredBlocks', '监控方块', getJsonListValue(sourceObject, 'blockBreakDetection.monitoredBlocks'), '一行一个方块名；留空=不过滤')}
+    `;
+  }
+
+  function renderBehaviorExtraFields(fieldRoot, sourceObject) {
+    return `
+      ${renderJsonBooleanField(fieldRoot, 'behavior.physicsStandby', '挂机省电', getJsonPathValue(sourceObject, 'behavior.physicsStandby') === true, '空闲时关闭物理模拟')}
+      ${renderJsonTextField(fieldRoot, 'behavior.lockAfterExpireCommand', '锁到期执行命令', getJsonPathValue(sourceObject, 'behavior.lockAfterExpireCommand') ?? '/home', '清空=删除该字段并回落后端默认 /home；要禁用请到“高级 JSON”写 空字符串', '/home')}
+      ${renderJsonTextField(fieldRoot, 'chat.unknownWhisperReply', '未知私聊回复', getJsonPathValue(sourceObject, 'chat.unknownWhisperReply') || '', '收到非命令私聊时回复的文本；留空=静默不回复')}
+      ${renderJsonNumberField(fieldRoot, 'autoRestart', '定时重启间隔', getJsonPathValue(sourceObject, 'autoRestart') ?? 0, '分钟；0=关闭', '1')}
+    `;
+  }
+
   function setJsonPathValue(object, pathText, value) {
     const segments = String(pathText || '').split('.').filter(Boolean);
     if (segments.length === 0) {
@@ -889,7 +935,7 @@
             ${renderJsonBooleanField('defaultBotJson', 'enabled', '启用实例', getJsonPathValue(defaultBotObject, 'enabled') !== false, '默认开启')}
             ${renderJsonBooleanField('defaultBotJson', 'autoStart', '自动启动', getJsonPathValue(defaultBotObject, 'autoStart') === true, '保存后尝试自动启动')}
             ${renderJsonBooleanField('defaultBotJson', 'trustedPlayersMergeParent', '合并上层名单', getJsonPathValue(defaultBotObject, 'trustedPlayersMergeParent') === true, '影响 trustedPlayers 和 trustedPlayersFile')}
-            ${renderJsonTextField('defaultBotJson', 'trustedPlayersFile', '额外信任名单文件', getJsonPathValue(defaultBotObject, 'trustedPlayersFile') || '', '按账号目录解析')}
+            ${renderJsonTextField('defaultBotJson', 'trustedPlayersFile', '额外信任名单文件', getJsonPathValue(defaultBotObject, 'trustedPlayersFile') || '', '按账号目录解析；仅当“合并上层名单”开启时才参与')}
             ${renderJsonSelectField('defaultBotJson', 'teleport.mode', 'TPA 模式', getJsonPathValue(defaultBotObject, 'teleport.mode') || 'whitelist', [
               { value: 'whitelist', label: 'whitelist' },
               { value: 'trustedPlayers', label: 'trustedPlayers' },
@@ -906,12 +952,34 @@
             ${renderJsonBooleanField('defaultBotJson', 'capabilities.terrainHandling', '启用地形处理', getJsonPathValue(defaultBotObject, 'capabilities.terrainHandling') !== false, '关闭后会禁用地形相关能力')}
             ${renderJsonBooleanField('defaultBotJson', 'capabilities.inventoryHandling', '启用背包处理', getJsonPathValue(defaultBotObject, 'capabilities.inventoryHandling') !== false, '关闭后禁用背包相关能力（轻量模式）')}
             ${renderJsonBooleanField('defaultBotJson', 'fish', '自动钓鱼', getJsonPathValue(defaultBotObject, 'fish') === true, '上线后自动进入钓鱼')}
-            ${renderJsonBooleanField('defaultBotJson', 'attack.autoAttack', '自动攻击', getJsonPathValue(defaultBotObject, 'attack.autoAttack') === true, '自动攻击附近目标')}
-            ${renderJsonBooleanField('defaultBotJson', 'monitoring.enabled', '实体监控', getJsonPathValue(defaultBotObject, 'monitoring.enabled') === true, '监控流浪商人等实体')}
             ${renderJsonBooleanField('defaultBotJson', 'recording.enabled', '启用录制', getJsonPathValue(defaultBotObject, 'recording.enabled') === true, 'Flashback 录制器')}
             ${renderJsonTextField('defaultBotJson', 'recording.outputDir', '录制输出目录', getJsonPathValue(defaultBotObject, 'recording.outputDir') || '', '相对 bot 目录')}
           </div>
-          ${renderJsonListField('defaultBotJson', 'trustedPlayers', '信任玩家列表', Array.isArray(getJsonPathValue(defaultBotObject, 'trustedPlayers')) ? getJsonPathValue(defaultBotObject, 'trustedPlayers') : [], '一行一个玩家名')}
+          ${renderJsonListField('defaultBotJson', 'trustedPlayers', '信任玩家列表', getJsonListValue(defaultBotObject, 'trustedPlayers'), '一行一个玩家名')}
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">攻击</strong>
+            <div class="instance-form-grid">
+              ${renderAttackFields('defaultBotJson', defaultBotObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">实体监控</strong>
+            <div class="instance-form-grid">
+              ${renderMonitoringFields('defaultBotJson', defaultBotObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">方块破坏监控</strong>
+            <div class="instance-form-grid">
+              ${renderBlockBreakDetectionFields('defaultBotJson', defaultBotObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">行为与其他</strong>
+            <div class="instance-form-grid">
+              ${renderBehaviorExtraFields('defaultBotJson', defaultBotObject)}
+            </div>
           </div>
         </section>
         <section
@@ -975,7 +1043,7 @@
             <strong class="config-group-title">信任与传送</strong>
             <div class="instance-form-grid">
               ${renderJsonBooleanField('botJson', 'trustedPlayersMergeParent', '合并上层信任名单', getJsonPathValue(botObject, 'trustedPlayersMergeParent') === true, '影响 trustedPlayers 和 trustedPlayersFile')}
-              ${renderJsonTextField('botJson', 'trustedPlayersFile', '额外信任名单文件', getJsonPathValue(botObject, 'trustedPlayersFile') || '', '按账号目录解析')}
+              ${renderJsonTextField('botJson', 'trustedPlayersFile', '额外信任名单文件', getJsonPathValue(botObject, 'trustedPlayersFile') || '', '按账号目录解析；仅当“合并上层信任名单”开启时才参与')}
               ${renderJsonSelectField('botJson', 'teleport.mode', 'TPA 模式', getJsonPathValue(botObject, 'teleport.mode') || 'whitelist', [
                 { value: 'whitelist', label: 'whitelist' },
                 { value: 'trustedPlayers', label: 'trustedPlayers' },
@@ -993,8 +1061,30 @@
               ${renderJsonBooleanField('botJson', 'behavior.enableResourcePack', '自动接受资源包', getJsonPathValue(botObject, 'behavior.enableResourcePack') === true, '资源包提示自动接受')}
               ${renderJsonBooleanField('botJson', 'recording.enabled', '启用录制', getJsonPathValue(botObject, 'recording.enabled') === true, 'Flashback 录制器')}
               ${renderJsonBooleanField('botJson', 'fish', '自动钓鱼', getJsonPathValue(botObject, 'fish') === true, '上线后自动进入钓鱼')}
-              ${renderJsonBooleanField('botJson', 'attack.autoAttack', '自动攻击', getJsonPathValue(botObject, 'attack.autoAttack') === true, '自动攻击附近目标')}
-              ${renderJsonBooleanField('botJson', 'monitoring.enabled', '实体监控', getJsonPathValue(botObject, 'monitoring.enabled') === true, '监控流浪商人等实体')}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">攻击</strong>
+            <div class="instance-form-grid">
+              ${renderAttackFields('botJson', botObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">实体监控</strong>
+            <div class="instance-form-grid">
+              ${renderMonitoringFields('botJson', botObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">方块破坏监控</strong>
+            <div class="instance-form-grid">
+              ${renderBlockBreakDetectionFields('botJson', botObject)}
+            </div>
+          </div>
+          <div class="config-group stack">
+            <strong class="config-group-title">行为与其他</strong>
+            <div class="instance-form-grid">
+              ${renderBehaviorExtraFields('botJson', botObject)}
             </div>
           </div>
         </div>

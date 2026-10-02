@@ -274,8 +274,8 @@ node .\index.js
 实例编辑器里现在还提供了一层“快速配置”表单，覆盖这些常用项：
 
 - `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`（数字=视距位值，后端默认 `2`）、`chunkBatchReplyChunksPerTick`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`，多级重连开关（`restartDelayScheduleMs` 分级延迟数组 + `restartDelayScheduleRepeatLast` 耗尽后是否重复最后一级），以及 `openAuth.enabled` / `openAuth.requestTimeoutMs` 与 `teleportPromptMatchers.stripLines` / `tpa` / `tpahere`
-- `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.enableResourcePack`、`capabilities.*`（含 `inventoryHandling`）、`fish`、`attack.autoAttack`、`monitoring.enabled`、`recording.enabled` / `recording.outputDir`
-- `config.json`：常用运行时开关和能力项，完整内容保留在“高级 JSON”标签
+- `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.enableResourcePack` / `behavior.physicsStandby` / `behavior.lockAfterExpireCommand`、`capabilities.*`（含 `inventoryHandling`）、`chat.unknownWhisperReply`、`autoRestart`、`fish`、`attack.*`（含 `attackRange` / `attackInterval` / `targetFilter.*`）、`monitoring.*`（含 `intervalSeconds` / `targetTypes`）、`blockBreakDetection.*`、`recording.enabled` / `recording.outputDir`
+- `config.json`：同样提供“攻击 / 实体监控 / 方块破坏监控 / 行为与其他”四组功能字段，以及常用运行时开关和能力项；完整内容保留在“高级 JSON”标签
 
 这层 GUI 不是新的数据源，只是帮你少手改 JSON；底层仍然按三份文件和后端合并规则生效。
 
@@ -283,6 +283,8 @@ node .\index.js
 
 - `viewDistance` 用数字输入：mineflayer 的字符串档位可等效换算（`tiny=6`、`short=8`、`normal=10`、`far=12`），面板按等效数字显示，改动后写成数字；`extreme` 不是合法档位，已从面板移除
 - `behavior.enableSpawnActions` 与 `behavior.whitelistReloadMinutes` 是后端当前未接线的兼容字段，表单已移除，需要时在“高级 JSON”标签直接编辑
+- `behavior.lockAfterExpireCommand` 的“禁用”无法用表单表达（清空输入=删除该字段，会回落后端默认 `/home`），需要禁用时在“高级 JSON”标签里显式写空字符串
+- `blockBreakDetection.*` 需要 `capabilities.entityHandling` 与 `capabilities.terrainHandling` 同时开启才会生效
 - 开启 `openAuth` 后，`config.json` 里的 `host` / `port` / `auth` / `version` 不再生效（由 `server.json` 接管），面板会把这几项显示为不可编辑
 - 保存前面板会拦截几类会让后端配置加载直接失败的值：非法的 `viewDistance`、`openAuth` 启用但连接字段不满足强校验、非法的 `teleportPromptMatchers` 正则、空的或非法的 `restartDelayScheduleMs`
 
