@@ -100,3 +100,53 @@ test('instance server options are sorted and de-duplicated', () => {
   assert.deepEqual(instancesComponent.getInstanceServerOptions([]), []);
   assert.deepEqual(instancesComponent.getInstanceServerOptions([{ botDir: 'x' }]), []);
 });
+
+test('instance editor uses a numeric view distance and keeps top-level-only fields out of the connection wrapper', () => {
+  const editor = createEditor('edit');
+  editor.draft.serverJson = JSON.stringify({
+    connection: { host: 'wrapped.example.com' },
+    openAuth: { enabled: true, requestTimeoutMs: 4500 },
+    teleportPromptMatchers: { tpa: ['^x (?<sender>y)$'] },
+    restartDelayScheduleMs: [1000]
+  });
+
+  const html = instancesComponent.renderEditor(editor, 'server');
+
+  assert.match(html, /data-json-path="connection\.viewDistance"[\s\S]*?data-json-type="view-distance"/);
+  assert.doesNotMatch(html, />extreme</);
+  assert.match(html, /data-json-path="openAuth\.enabled"/);
+  assert.match(html, /data-json-path="openAuth\.requestTimeoutMs"/);
+  assert.match(html, /data-json-path="teleportPromptMatchers\.tpa"/);
+  assert.match(html, /data-json-path="restartDelayScheduleMs"/);
+  assert.match(html, /data-json-path="connection\.host"/);
+  assert.doesNotMatch(html, /data-json-path="connection\.(?:openAuth|teleportPromptMatchers|restartDelaySchedule)/);
+});
+
+test('instance editor drops unwired behavior fields and exposes inventory handling', () => {
+  const html = instancesComponent.renderEditor(createEditor('edit'), 'defaults');
+
+  assert.doesNotMatch(html, /data-json-path="behavior\.enableSpawnActions"/);
+  assert.doesNotMatch(html, /data-json-path="behavior\.whitelistReloadMinutes"/);
+  assert.match(html, /data-json-path="capabilities\.inventoryHandling"/);
+});
+
+test('openAuth locks the per-instance connection fields', () => {
+  function getBotPanel(html) {
+    return html.slice(html.indexOf('data-editor-panel="bot"'), html.indexOf('data-editor-panel="json"'));
+  }
+
+  const lockedEditor = createEditor('edit');
+  lockedEditor.draft.serverJson = JSON.stringify({ openAuth: { enabled: true } });
+  const lockedBotPanel = getBotPanel(instancesComponent.renderEditor(lockedEditor, 'bot'));
+
+  assert.match(lockedBotPanel, /openAuth/);
+  for (const fieldPath of ['host', 'port', 'auth', 'version']) {
+    const tag = lockedBotPanel.match(new RegExp(`<[^>]*data-json-path="${fieldPath}"[^>]*>`));
+    assert.ok(tag, `missing field ${fieldPath}`);
+    assert.match(tag[0], /disabled/, `${fieldPath} should be disabled while openAuth is enabled`);
+  }
+
+  const unlockedBotPanel = getBotPanel(instancesComponent.renderEditor(createEditor('edit'), 'bot'));
+  const unlockedHost = unlockedBotPanel.match(/<[^>]*data-json-path="host"[^>]*>/);
+  assert.doesNotMatch(unlockedHost[0], /disabled/);
+});

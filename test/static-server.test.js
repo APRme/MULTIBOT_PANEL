@@ -1,10 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-const { createPanelServer, loadPanelConfig, resolvePublicFile, DEFAULT_CONFIG } = require('../index');
+const { createPanelServer, loadPanelConfig, resolvePublicFile, DEFAULT_CONFIG, PANEL_VERSION } = require('../index');
 const { isValidUsername, normalizeSkinUrl, decodeSkinTextures, createAvatarService, ERROR_CODES } = require('../lib/avatar-service');
+
+// 测试临时目录固定落在工作区 .temp/ 下：不写系统 %TEMP%，也方便统一清理。
+const PANEL_TEMP_ROOT = path.join(__dirname, '..', '..', '.temp', 'panel-test');
+fs.mkdirSync(PANEL_TEMP_ROOT, { recursive: true });
 
 const FAKE_UUID = '069a79f444e94726a5befca90e38aaf5';
 const FAKE_SKIN_URL = 'https://textures.minecraft.net/texture/fake123';
@@ -65,7 +68,7 @@ async function close(server) {
 }
 
 test('loadPanelConfig falls back to defaults and merges config file', () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-config-'));
+  const tempDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-config-'));
   const configPath = path.join(tempDir, 'panel.config.json');
 
   assert.deepEqual(loadPanelConfig(path.join(tempDir, 'missing.json')), DEFAULT_CONFIG);
@@ -83,7 +86,7 @@ test('loadPanelConfig falls back to defaults and merges config file', () => {
 });
 
 test('createPanelServer serves static files, healthz and 404', async () => {
-  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-public-'));
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-public-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
   fs.writeFileSync(path.join(publicDir, 'app.js'), 'console.log("ok")', 'utf8');
 
@@ -97,7 +100,7 @@ test('createPanelServer serves static files, healthz and 404', async () => {
   try {
     const healthResponse = await fetch(`${baseUrl}/healthz`);
     assert.equal(healthResponse.status, 200);
-    assert.deepEqual(await healthResponse.json(), { ok: true, title: 'Panel Test' });
+    assert.deepEqual(await healthResponse.json(), { ok: true, title: 'Panel Test', version: PANEL_VERSION });
 
     const indexResponse = await fetch(`${baseUrl}/`);
     assert.equal(indexResponse.status, 200);
@@ -124,7 +127,7 @@ test('createPanelServer serves static files, healthz and 404', async () => {
 });
 
 test('resolvePublicFile rejects traversal into similarly named sibling directories', () => {
-  const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-path-'));
+  const parentDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-path-'));
   const publicDir = path.join(parentDir, 'public');
   fs.mkdirSync(publicDir, { recursive: true });
 
@@ -174,7 +177,7 @@ test('avatar service rejects invalid usernames', async () => {
 
 test('avatar endpoint serves proxied skin png bytes with caching headers', async () => {
   const stub = createStubFetcher();
-  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-avatar-'));
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-avatar-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
 
   const server = createPanelServer({ publicDir, title: 'Panel Test', fetcher: stub.fetcher });
@@ -201,7 +204,7 @@ test('avatar endpoint serves proxied skin png bytes with caching headers', async
 });
 
 test('avatar endpoint maps errors to http status codes', async () => {
-  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-avatar-errors-'));
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-avatar-errors-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
 
   const cases = [
@@ -235,7 +238,7 @@ test('avatar endpoint maps errors to http status codes', async () => {
 
 test('avatar clear-cache endpoint resets the in-process cache', async () => {
   const stub = createStubFetcher();
-  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-avatar-clear-'));
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-avatar-clear-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
 
   const server = createPanelServer({ publicDir, title: 'Panel Test', fetcher: stub.fetcher });
@@ -277,7 +280,7 @@ test('avatar helper functions parse textures and normalize urls', () => {
 });
 
 test('content security policy allows data and blob images for avatars', async () => {
-  const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'multibot-panel-csp-'));
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-csp-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>ok</title>', 'utf8');
 
   const server = createPanelServer({ publicDir, title: 'Panel Test' });

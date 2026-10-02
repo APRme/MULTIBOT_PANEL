@@ -9,6 +9,9 @@ const DEFAULT_CONFIG = {
   title: 'MULTIBOT Panel'
 };
 
+// 版本号规则见 AGENTS.md：V<年份两位>.<自然季度>.<小版本>，小版本每提交一次加 1、跨年归零。
+const PANEL_VERSION = 'V26.4.43';
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -124,6 +127,7 @@ async function handleAvatarRequest(req, res, pathname, avatarService) {
 function createPanelServer(options = {}) {
   const publicDir = options.publicDir || path.join(__dirname, 'public');
   const title = options.title || DEFAULT_CONFIG.title;
+  const version = options.version || PANEL_VERSION;
   const avatarService = createAvatarService({ fetcher: options.fetcher });
 
   return http.createServer((req, res) => {
@@ -132,7 +136,7 @@ function createPanelServer(options = {}) {
       const pathname = url.pathname;
 
       if (req.method === 'GET' && pathname === '/healthz') {
-        sendJson(res, 200, { ok: true, title });
+        sendJson(res, 200, { ok: true, title, version });
         return;
       }
 
@@ -213,7 +217,7 @@ async function main() {
     : path.join(__dirname, 'panel.config.json');
 
   const { config, server } = await startPanelServer({ configPath });
-  console.log(`[MULTIBOT_PANEL] listening on http://${config.host}:${config.port}`);
+  console.log(`[MULTIBOT_PANEL] ${PANEL_VERSION} listening on http://${config.host}:${config.port}`);
 
   const shutdown = () => {
     server.close(() => {
@@ -234,6 +238,7 @@ if (require.main === module) {
 
 module.exports = {
   DEFAULT_CONFIG,
+  PANEL_VERSION,
   loadPanelConfig,
   resolvePublicFile,
   createPanelServer,

@@ -101,12 +101,39 @@
     return current;
   }
 
+  // 这些路径后端只在 server.json 顶层读取，写进旧式 connection 包裹会被静默忽略。
+  const SERVER_TOP_LEVEL_ONLY_PATHS = Object.freeze([
+    'restartDelayScheduleMs',
+    'restartDelayScheduleRepeatLast',
+    'openAuth',
+    'teleportPromptMatchers'
+  ]);
+
+  function isServerTopLevelOnlyPath(pathText) {
+    const text = String(pathText || '');
+    return SERVER_TOP_LEVEL_ONLY_PATHS.some((prefix) => {
+      return text === prefix || text.startsWith(`${prefix}.`);
+    });
+  }
+
+  // 后端 extractRuntimeOverrides 先读顶层、再用 connection 覆盖；顶层专用路径不参与这层兼容。
+  function getEffectiveServerValue(serverObject, fieldName) {
+    if (!isServerTopLevelOnlyPath(fieldName) && isPlainObject(serverObject && serverObject.connection)) {
+      const connectionValue = serverObject.connection[fieldName];
+      if (connectionValue !== undefined && connectionValue !== null) {
+        return connectionValue;
+      }
+    }
+
+    return serverObject ? serverObject[fieldName] : undefined;
+  }
+
   function getServerJsonFieldValue(serverObject, pathText, fallbackValue) {
-    const connectionValue = isPlainObject(serverObject && serverObject.connection)
-      ? getJsonPathValue(serverObject.connection, pathText)
-      : undefined;
-    if (connectionValue !== undefined) {
-      return connectionValue;
+    if (!isServerTopLevelOnlyPath(pathText) && isPlainObject(serverObject && serverObject.connection)) {
+      const connectionValue = getJsonPathValue(serverObject.connection, pathText);
+      if (connectionValue !== undefined) {
+        return connectionValue;
+      }
     }
 
     const topLevelValue = getJsonPathValue(serverObject, pathText);
@@ -118,9 +145,18 @@
   }
 
   function getServerJsonFieldPath(serverObject, pathText) {
+    if (isServerTopLevelOnlyPath(pathText)) {
+      return pathText;
+    }
+
     return isPlainObject(serverObject && serverObject.connection)
       ? `connection.${pathText}`
       : pathText;
+  }
+
+  function getServerJsonListValue(serverObject, pathText) {
+    const value = getServerJsonFieldValue(serverObject, pathText);
+    return Array.isArray(value) ? value : [];
   }
 
   function setJsonPathValue(object, pathText, value) {
@@ -205,7 +241,7 @@
     `;
   }
 
-  function renderJsonTextField(fieldRoot, pathText, label, value, helperText = '', placeholder = '') {
+  function renderJsonTextField(fieldRoot, pathText, label, value, helperText = '', placeholder = '', disabled = false) {
     return `
       <label class="label">
         <span>${formatters.escapeHtml(label)}</span>
@@ -215,13 +251,14 @@
           data-json-path="${formatters.escapeHtml(pathText)}"
           data-json-type="string"
           value="${formatters.escapeHtml(value == null ? '' : value)}"
-          placeholder="${formatters.escapeHtml(placeholder || '')}">
+          placeholder="${formatters.escapeHtml(placeholder || '')}"
+          ${disabled ? 'disabled' : ''}>
         ${helperText ? `<span class="helper">${formatters.escapeHtml(helperText)}</span>` : ''}
       </label>
     `;
   }
 
-  function renderJsonNumberField(fieldRoot, pathText, label, value, helperText = '', step = '1') {
+  function renderJsonNumberField(fieldRoot, pathText, label, value, helperText = '', step = '1', disabled = false) {
     return `
       <label class="label">
         <span>${formatters.escapeHtml(label)}</span>
@@ -232,13 +269,35 @@
           data-json-field="${formatters.escapeHtml(fieldRoot)}"
           data-json-path="${formatters.escapeHtml(pathText)}"
           data-json-type="number"
-          value="${formatters.escapeHtml(value == null ? '' : value)}">
+          value="${formatters.escapeHtml(value == null ? '' : value)}"
+          ${disabled ? 'disabled' : ''}>
         ${helperText ? `<span class="helper">${formatters.escapeHtml(helperText)}</span>` : ''}
       </label>
     `;
   }
 
-  function renderJsonSelectField(fieldRoot, pathText, label, value, options, helperText = '') {
+  // 视距：后端默认是数字 2，mineflayer 也接受 tiny/short/normal/far，因此这里统一用数字输入。
+  function renderJsonViewDistanceField(fieldRoot, pathText, label, display, helperText = '') {
+    const source = display && typeof display === 'object' ? display : {};
+    const invalid = source.valid === false;
+    return `
+      <label class="label">
+        <span>${formatters.escapeHtml(label)}</span>
+        <input
+          class="input mono${invalid ? ' input-invalid' : ''}"
+          type="number"
+          min="1"
+          step="1"
+          data-json-field="${formatters.escapeHtml(fieldRoot)}"
+          data-json-path="${formatters.escapeHtml(pathText)}"
+          data-json-type="view-distance"
+          value="${formatters.escapeHtml(source.value == null ? '' : source.value)}">
+        <span class="helper">${formatters.escapeHtml(helperText || '')}</span>
+      </label>
+    `;
+  }
+
+  function renderJsonSelectField(fieldRoot, pathText, label, value, options, helperText = '', disabled = false) {
     return `
       <label class="label">
         <span>${formatters.escapeHtml(label)}</span>
@@ -246,7 +305,8 @@
           class="select"
           data-json-field="${formatters.escapeHtml(fieldRoot)}"
           data-json-path="${formatters.escapeHtml(pathText)}"
-          data-json-type="select">
+          data-json-type="select"
+          ${disabled ? 'disabled' : ''}>
           ${(options || []).map((option) => `
             <option value="${formatters.escapeHtml(option.value)}" ${String(value || '') === String(option.value) ? 'selected' : ''}>${formatters.escapeHtml(option.label)}</option>
           `).join('')}
@@ -302,12 +362,11 @@
     return numbers.length > 0 ? numbers : undefined;
   }
 
+  // 后端只从 server.json 顶层读分级重连，因此这里恒写顶层，不受 connection 包裹影响。
   function applyReconnectModeToggle(serverJsonText, enabled) {
     const nextObject = cloneJsonValue(safeParseJsonObject(serverJsonText));
-    const prefix = isPlainObject(nextObject && nextObject.connection) ? 'connection.' : '';
-    const schedulePath = `${prefix}restartDelayScheduleMs`;
-    const repeatLastPath = `${prefix}restartDelayScheduleRepeatLast`;
-    const fixedDelayPath = `${prefix}restartDelayMs`;
+    const schedulePath = 'restartDelayScheduleMs';
+    const repeatLastPath = 'restartDelayScheduleRepeatLast';
 
     if (enabled) {
       const currentSchedule = getJsonPathValue(nextObject, schedulePath);
@@ -315,13 +374,222 @@
         ? currentSchedule
         : DEFAULT_RECONNECT_SCHEDULE_MS;
       setJsonPathValue(nextObject, schedulePath, schedule);
-      deleteJsonPathValue(nextObject, fixedDelayPath);
+      // 固定延迟与分级延迟互斥：后端 connection 优先级高于顶层，两处都要清掉。
+      deleteJsonPathValue(nextObject, 'restartDelayMs');
+      deleteJsonPathValue(nextObject, 'connection.restartDelayMs');
     } else {
       deleteJsonPathValue(nextObject, schedulePath);
       deleteJsonPathValue(nextObject, repeatLastPath);
     }
 
     return stringifyJson(nextObject);
+  }
+
+  // mineflayer 把字符串档位映射为位值，数字则直接当位值用，因此两者可以等效换算。
+  const VIEW_DISTANCE_TIER_BITS = Object.freeze({
+    tiny: 6,
+    short: 8,
+    normal: 10,
+    far: 12
+  });
+
+  function formatViewDistanceForDisplay(rawValue) {
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return { value: '', valid: true, helper: '数字即视距位值；留空=继承（后端默认 2），常用 2-12' };
+    }
+
+    if (typeof rawValue === 'number') {
+      if (Number.isInteger(rawValue) && rawValue >= 1) {
+        return { value: String(rawValue), valid: true, helper: '数字即视距位值，常用 2-12' };
+      }
+      return {
+        value: '',
+        valid: false,
+        helper: `当前值 ${JSON.stringify(rawValue)} 非法：视距必须是 ≥1 的整数，否则该 bot 登录会失败`
+      };
+    }
+
+    const tier = String(rawValue).trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(VIEW_DISTANCE_TIER_BITS, tier)) {
+      return {
+        value: String(VIEW_DISTANCE_TIER_BITS[tier]),
+        valid: true,
+        helper: `当前文件为 '${tier}'，等效数字 ${VIEW_DISTANCE_TIER_BITS[tier]}；改动后会写成数字`
+      };
+    }
+
+    return {
+      value: '',
+      valid: false,
+      helper: `当前值 '${String(rawValue)}' 非法：仅支持 ≥1 的整数（数字即视距位值），否则该 bot 登录会失败`
+    };
+  }
+
+  function normalizeViewDistanceInput(rawText) {
+    const text = String(rawText == null ? '' : rawText).trim();
+    if (!text) {
+      return { value: undefined, valid: true };
+    }
+
+    const parsedValue = Number(text);
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+      return { value: undefined, valid: false };
+    }
+
+    return { value: parsedValue, valid: true };
+  }
+
+  function validateViewDistanceValue(rawValue) {
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return '';
+    }
+
+    if (typeof rawValue === 'number') {
+      return Number.isInteger(rawValue) && rawValue >= 1
+        ? ''
+        : '视距（viewDistance）必须是 ≥1 的整数';
+    }
+
+    if (typeof rawValue === 'string') {
+      const tier = rawValue.trim().toLowerCase();
+      return Object.prototype.hasOwnProperty.call(VIEW_DISTANCE_TIER_BITS, tier)
+        ? ''
+        : `视距（viewDistance）取值非法：${rawValue}`;
+    }
+
+    return '视距（viewDistance）类型非法，必须是数字';
+  }
+
+  // 后端 openAuth 强校验：任一条件不满足都会让配置加载直接抛错。
+  function validateOpenAuthConstraints(serverObject) {
+    const openAuth = isPlainObject(serverObject && serverObject.openAuth) ? serverObject.openAuth : {};
+    if (openAuth.enabled !== true) {
+      return '';
+    }
+
+    const host = getEffectiveServerValue(serverObject, 'host');
+    if (typeof host !== 'string' || !host.trim()) {
+      return 'server.json 启用了 openAuth：必须显式填写 host';
+    }
+
+    const port = Number(getEffectiveServerValue(serverObject, 'port'));
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      return 'server.json 启用了 openAuth：port 必须是 1-65535 的整数';
+    }
+
+    if (getEffectiveServerValue(serverObject, 'auth') !== 'microsoft') {
+      return "server.json 启用了 openAuth：auth 必须是 'microsoft'";
+    }
+
+    if (getEffectiveServerValue(serverObject, 'version') !== '1.21.11') {
+      return "server.json 启用了 openAuth：version 必须是 '1.21.11'";
+    }
+
+    if (openAuth.requestTimeoutMs !== undefined && openAuth.requestTimeoutMs !== null) {
+      const timeoutMs = Number(openAuth.requestTimeoutMs);
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 5000) {
+        return 'openAuth.requestTimeoutMs 必须是 1000-5000 的整数';
+      }
+    }
+
+    return '';
+  }
+
+  // 后端 teleportPromptMatchers 校验：非空、≤500 字符、^ 与 $ 锚定、合法正则，tpa/tpahere 需 (?<sender>。
+  function validateTeleportPromptMatchers(serverObject) {
+    const matchers = isPlainObject(serverObject && serverObject.teleportPromptMatchers)
+      ? serverObject.teleportPromptMatchers
+      : null;
+    if (!matchers) {
+      return '';
+    }
+
+    const groups = [
+      { key: 'stripLines', requireSender: false },
+      { key: 'tpa', requireSender: true },
+      { key: 'tpahere', requireSender: true }
+    ];
+
+    for (const group of groups) {
+      const list = matchers[group.key];
+      if (list === undefined || list === null) {
+        continue;
+      }
+
+      if (!Array.isArray(list)) {
+        return `teleportPromptMatchers.${group.key} 必须是字符串数组`;
+      }
+
+      if (list.length > 20) {
+        return `teleportPromptMatchers.${group.key} 最多 20 条`;
+      }
+
+      for (const entry of list) {
+        if (typeof entry !== 'string') {
+          return `teleportPromptMatchers.${group.key} 的每一项都必须是字符串`;
+        }
+
+        const source = entry.trim();
+        if (!source || source.length > 500) {
+          return `teleportPromptMatchers.${group.key} 每条需为 1-500 字符的正则`;
+        }
+
+        if (!source.startsWith('^') || !source.endsWith('$')) {
+          return `teleportPromptMatchers.${group.key} 每条必须以 ^ 开头、$ 结尾`;
+        }
+
+        if (group.requireSender && !source.includes('(?<sender>')) {
+          return `teleportPromptMatchers.${group.key} 每条必须包含 (?<sender>`;
+        }
+
+        try {
+          new RegExp(source, 'i');
+        } catch (error) {
+          return `teleportPromptMatchers.${group.key} 存在非法正则：${source}`;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  function validateReconnectSchedule(serverObject) {
+    const source = isPlainObject(serverObject) ? serverObject : {};
+    const schedule = source.restartDelayScheduleMs;
+    if (schedule !== undefined) {
+      if (!Array.isArray(schedule) || schedule.length === 0) {
+        return 'server.json 的 restartDelayScheduleMs 必须是非空数组（留空请删除该字段）';
+      }
+
+      if (!schedule.every((entry) => Number.isInteger(entry) && entry >= 0)) {
+        return 'server.json 的 restartDelayScheduleMs 每一项都必须是非负整数';
+      }
+    }
+
+    const repeatLast = source.restartDelayScheduleRepeatLast;
+    if (repeatLast !== undefined && typeof repeatLast !== 'boolean') {
+      return 'server.json 的 restartDelayScheduleRepeatLast 必须是布尔值';
+    }
+
+    return '';
+  }
+
+  // 保存前统一校验：这些字段一旦写坏，后端 loadMasterConfig 会直接抛错。
+  function validateInstanceConfig(options = {}) {
+    const serverObject = isPlainObject(options.serverObject) ? options.serverObject : {};
+    const defaultBotObject = isPlainObject(options.defaultBotObject) ? options.defaultBotObject : {};
+    const botObject = isPlainObject(options.botObject) ? options.botObject : {};
+
+    const messages = [
+      validateViewDistanceValue(getEffectiveServerValue(serverObject, 'viewDistance')),
+      validateViewDistanceValue(defaultBotObject.viewDistance),
+      validateViewDistanceValue(botObject.viewDistance),
+      validateOpenAuthConstraints(serverObject),
+      validateTeleportPromptMatchers(serverObject),
+      validateReconnectSchedule(serverObject)
+    ];
+
+    return messages.find((message) => Boolean(message)) || '';
   }
 
   function getInstanceKey(serverDir, botDir) {
@@ -460,6 +728,11 @@
     const botObject = safeParseJsonObject(draft.botJson);
     const reconnectScheduleValues = getServerJsonFieldValue(serverObject, 'restartDelayScheduleMs', []);
     const multiLevelReconnect = Array.isArray(reconnectScheduleValues) && reconnectScheduleValues.length > 0;
+    const openAuthConfig = isPlainObject(serverObject.openAuth) ? serverObject.openAuth : {};
+    const openAuthEnabled = openAuthConfig.enabled === true;
+    const openAuthLockHelper = 'server.json 启用了 openAuth：该字段由 server.json 接管，此处修改不生效';
+    const serverViewDistance = formatViewDistanceForDisplay(getEffectiveServerValue(serverObject, 'viewDistance'));
+    const botViewDistance = formatViewDistanceForDisplay(botObject.viewDistance);
     const activeTab = normalizeEditorTab(activeTabId, editor && editor.mode);
 
     return `
@@ -538,26 +811,26 @@
           <div class="config-section stack">
             <div class="config-section-heading">
               <strong>服务器共享配置</strong>
-              <span class="helper">写入 <code>server.json</code>，同一 <code>serverDir</code> 下的所有 Bot 都会继承。</span>
+              <span class="helper">写入 <code>server.json</code>，同一 <code>serverDir</code> 共用；但实例 <code>config.json</code> 里的同名字段会覆盖这里的值。</span>
             </div>
             <div class="instance-warning">
               修改这里会同步影响同服务器目录下的其他 Bot，并触发它们重新加载连接配置。
             </div>
+            ${openAuthEnabled
+              ? `<div class="instance-warning">
+                  server.json 启用了 <code>openAuth</code>：<code>auth</code> 必须是 <code>microsoft</code>、<code>version</code> 必须是 <code>1.21.11</code>，且 <code>host</code>/<code>port</code>/<code>auth</code>/<code>version</code> 会被强制使用这里的值，实例级覆盖不再生效。
+                </div>`
+              : ''}
           <div class="instance-form-grid">
             ${renderJsonTextField('serverJson', getServerJsonFieldPath(serverObject, 'host'), '主机地址', getServerJsonFieldValue(serverObject, 'host', '') ?? '', '', 'mc.example.com')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'port'), '端口', getServerJsonFieldValue(serverObject, 'port', 25565) ?? 25565, '', '1')}
             ${renderJsonSelectField('serverJson', getServerJsonFieldPath(serverObject, 'auth'), '认证方式', getServerJsonFieldValue(serverObject, 'auth', 'microsoft') ?? 'microsoft', [
               { value: 'microsoft', label: 'microsoft' },
               { value: 'offline', label: 'offline' }
-            ], '通常填 microsoft；离线服可用 offline')}
-            ${renderJsonTextField('serverJson', getServerJsonFieldPath(serverObject, 'version'), '游戏版本', getServerJsonFieldValue(serverObject, 'version', '') ?? '', '', '1.21.11')}
-            ${renderJsonSelectField('serverJson', getServerJsonFieldPath(serverObject, 'viewDistance'), '视距', getServerJsonFieldValue(serverObject, 'viewDistance', 'tiny') ?? 'tiny', [
-              { value: 'tiny', label: 'tiny' },
-              { value: 'short', label: 'short' },
-              { value: 'normal', label: 'normal' },
-              { value: 'far', label: 'far' },
-              { value: 'extreme', label: 'extreme' }
-            ], '登录时请求的视距')}
+            ], openAuthEnabled ? "openAuth 要求固定为 'microsoft'" : '通常填 microsoft；离线服可用 offline')}
+            ${renderJsonTextField('serverJson', getServerJsonFieldPath(serverObject, 'version'), '游戏版本', getServerJsonFieldValue(serverObject, 'version', '') ?? '', openAuthEnabled ? "openAuth 要求固定为 '1.21.11'" : '', '1.21.11')}
+            ${renderJsonViewDistanceField('serverJson', getServerJsonFieldPath(serverObject, 'viewDistance'), '视距', serverViewDistance, serverViewDistance.helper)}
+            ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'chunkBatchReplyChunksPerTick'), '区块批回包速率', getServerJsonFieldValue(serverObject, 'chunkBatchReplyChunksPerTick', '') ?? '', '0=不回包；有效范围 0.01-64，默认 0.01', '0.01')}
             ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'disableChatSigning'), '关闭聊天签名', getServerJsonFieldValue(serverObject, 'disableChatSigning', true) !== false, '兼容旧服聊天')}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'checkTimeoutInterval'), 'KeepAlive 超时', getServerJsonFieldValue(serverObject, 'checkTimeoutInterval', 30000) ?? 30000, '毫秒', '1')}
             ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'restartOnDisconnect'), '断线自动重连', getServerJsonFieldValue(serverObject, 'restartOnDisconnect', true) !== false, '总开关：关闭后不自动重连')}
@@ -579,6 +852,22 @@
               `}
             ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'restartJitterMs'), '重连抖动', getServerJsonFieldValue(serverObject, 'restartJitterMs', 120000) ?? 120000, '两种模式共用', '1')}
             </div>
+          </div>
+          <div class="config-section stack">
+            <div class="config-section-heading">
+              <strong>OpenAuth 与传送提示匹配</strong>
+              <span class="helper">这两组字段只在 <code>server.json</code> 顶层生效，写进旧式 <code>connection</code> 包裹会被后端忽略。</span>
+            </div>
+            <div class="instance-warning">
+              openAuth 启用后后端会强校验：host 必填、port 为 1-65535、auth 必须是 <code>microsoft</code>、version 必须是 <code>1.21.11</code>，任一不满足都会导致配置加载失败。
+            </div>
+            <div class="instance-form-grid">
+              ${renderJsonBooleanField('serverJson', getServerJsonFieldPath(serverObject, 'openAuth.enabled'), 'OpenAuth 认证', getServerJsonFieldValue(serverObject, 'openAuth.enabled', false) === true, 'ViaProxy 直连认证')}
+              ${renderJsonNumberField('serverJson', getServerJsonFieldPath(serverObject, 'openAuth.requestTimeoutMs'), 'OpenAuth 请求超时', getServerJsonFieldValue(serverObject, 'openAuth.requestTimeoutMs', 4500) ?? 4500, '1000-5000 毫秒', '1')}
+            </div>
+            ${renderJsonListField('serverJson', getServerJsonFieldPath(serverObject, 'teleportPromptMatchers.stripLines'), '整行忽略匹配', getServerJsonListValue(serverObject, 'teleportPromptMatchers.stripLines'), '一行一个正则；须以 ^ 开头、$ 结尾，最多 20 条')}
+            ${renderJsonListField('serverJson', getServerJsonFieldPath(serverObject, 'teleportPromptMatchers.tpa'), 'TPA 提示匹配', getServerJsonListValue(serverObject, 'teleportPromptMatchers.tpa'), '一行一个正则；须含 (?<sender>，最多 20 条')}
+            ${renderJsonListField('serverJson', getServerJsonFieldPath(serverObject, 'teleportPromptMatchers.tpahere'), 'TPAHERE 提示匹配', getServerJsonListValue(serverObject, 'teleportPromptMatchers.tpahere'), '一行一个正则；须含 (?<sender>，最多 20 条')}
           </div>
         </section>
         <section
@@ -606,17 +895,16 @@
               { value: 'trustedPlayers', label: 'trustedPlayers' },
               { value: 'all', label: 'all' }
             ], '普通 TPA 的自动接受模式')}
-            ${renderJsonTextField('defaultBotJson', 'teleport.whitelistFile', 'TPA 白名单文件', getJsonPathValue(defaultBotObject, 'teleport.whitelistFile') || '', '相对 bot 目录')}
+            ${renderJsonTextField('defaultBotJson', 'teleport.whitelistFile', 'TPA 白名单文件', getJsonPathValue(defaultBotObject, 'teleport.whitelistFile') || '', '相对当前 bot 目录；填 ../whitelist.txt = 用 serverDir 共享名单', '../whitelist.txt')}
             ${renderJsonBooleanField('defaultBotJson', 'logging.logToFile', '写聊天日志', getJsonPathValue(defaultBotObject, 'logging.logToFile') !== false, '单实例聊天日志')}
             ${renderJsonTextField('defaultBotJson', 'logging.logFilePath', '聊天日志路径', getJsonPathValue(defaultBotObject, 'logging.logFilePath') || '', '相对 bot 目录')}
             ${renderJsonBooleanField('defaultBotJson', 'logging.logPlayerList', '写玩家列表', getJsonPathValue(defaultBotObject, 'logging.logPlayerList') !== false, '单实例玩家列表日志')}
             ${renderJsonTextField('defaultBotJson', 'logging.playerListPath', '玩家列表路径', getJsonPathValue(defaultBotObject, 'logging.playerListPath') || '', '相对 bot 目录')}
             ${renderJsonNumberField('defaultBotJson', 'logging.playerListIntervalMinutes', '玩家列表间隔', getJsonPathValue(defaultBotObject, 'logging.playerListIntervalMinutes') ?? 1, '分钟', '1')}
             ${renderJsonBooleanField('defaultBotJson', 'behavior.enableResourcePack', '自动接受资源包', getJsonPathValue(defaultBotObject, 'behavior.enableResourcePack') === true, '资源包提示自动接受')}
-            ${renderJsonBooleanField('defaultBotJson', 'behavior.enableSpawnActions', '启用出生动作', getJsonPathValue(defaultBotObject, 'behavior.enableSpawnActions') === true, '兼容保留字段')}
-            ${renderJsonNumberField('defaultBotJson', 'behavior.whitelistReloadMinutes', '白名单刷新周期', getJsonPathValue(defaultBotObject, 'behavior.whitelistReloadMinutes') ?? 30, '分钟', '1')}
             ${renderJsonBooleanField('defaultBotJson', 'capabilities.entityHandling', '启用实体处理', getJsonPathValue(defaultBotObject, 'capabilities.entityHandling') !== false, '关闭后会禁用实体相关能力')}
             ${renderJsonBooleanField('defaultBotJson', 'capabilities.terrainHandling', '启用地形处理', getJsonPathValue(defaultBotObject, 'capabilities.terrainHandling') !== false, '关闭后会禁用地形相关能力')}
+            ${renderJsonBooleanField('defaultBotJson', 'capabilities.inventoryHandling', '启用背包处理', getJsonPathValue(defaultBotObject, 'capabilities.inventoryHandling') !== false, '关闭后禁用背包相关能力（轻量模式）')}
             ${renderJsonBooleanField('defaultBotJson', 'fish', '自动钓鱼', getJsonPathValue(defaultBotObject, 'fish') === true, '上线后自动进入钓鱼')}
             ${renderJsonBooleanField('defaultBotJson', 'attack.autoAttack', '自动攻击', getJsonPathValue(defaultBotObject, 'attack.autoAttack') === true, '自动攻击附近目标')}
             ${renderJsonBooleanField('defaultBotJson', 'monitoring.enabled', '实体监控', getJsonPathValue(defaultBotObject, 'monitoring.enabled') === true, '监控流浪商人等实体')}
@@ -656,29 +944,26 @@
         <div class="config-section stack">
           <div class="config-section-heading">
             <strong>当前实例配置</strong>
-            <span class="helper">这些字段直接写入 <code>config.json</code>；未设置的字段继续继承共享默认值。</span>
+            <span class="helper">这些字段写入 <code>config.json</code>（优先级最高）；未设置的字段按 <code>config.json &gt; default.config.json &gt; server.json &gt; 后端内建默认值</code> 继承。</span>
           </div>
           <div class="config-group stack">
             <strong class="config-group-title">基础</strong>
+            ${openAuthEnabled
+              ? `<div class="instance-warning">server.json 启用了 <code>openAuth</code>：host / port / auth / version 由 server.json 接管，这里修改不生效。</div>`
+              : ''}
             <div class="instance-form-grid">
               ${renderJsonBooleanField('botJson', 'enabled', '启用实例', getJsonPathValue(botObject, 'enabled') !== false, '停用后不会自动连接')}
               ${renderJsonBooleanField('botJson', 'autoStart', '自动启动', getJsonPathValue(botObject, 'autoStart') === true, '保存后尝试自动启动')}
-              ${renderJsonTextField('botJson', 'host', '主机地址', getJsonPathValue(botObject, 'host') || '', '', 'mc.example.com')}
-              ${renderJsonNumberField('botJson', 'port', '端口', getJsonPathValue(botObject, 'port') ?? 25565, '', '1')}
+              ${renderJsonTextField('botJson', 'host', '主机地址', getJsonPathValue(botObject, 'host') || '', openAuthEnabled ? openAuthLockHelper : '', 'mc.example.com', openAuthEnabled)}
+              ${renderJsonNumberField('botJson', 'port', '端口', getJsonPathValue(botObject, 'port') ?? 25565, openAuthEnabled ? openAuthLockHelper : '', '1', openAuthEnabled)}
               ${renderJsonSelectField('botJson', 'auth', '认证方式', getJsonPathValue(botObject, 'auth') || 'microsoft', [
                 { value: 'microsoft', label: 'microsoft' },
                 { value: 'offline', label: 'offline' }
-              ], '通常填 microsoft；离线服可用 offline')}
-              ${renderJsonTextField('botJson', 'version', '游戏版本', getJsonPathValue(botObject, 'version') || '', '', '1.21.11')}
+              ], openAuthEnabled ? openAuthLockHelper : '通常填 microsoft；离线服可用 offline', openAuthEnabled)}
+              ${renderJsonTextField('botJson', 'version', '游戏版本', getJsonPathValue(botObject, 'version') || '', openAuthEnabled ? openAuthLockHelper : '', '1.21.11', openAuthEnabled)}
               ${renderJsonTextField('botJson', 'username', '用户名', getJsonPathValue(botObject, 'username') || '', '', 'ExampleBot')}
               ${renderJsonTextField('botJson', 'email', '邮箱', getJsonPathValue(botObject, 'email') || '', '', 'example@outlook.com')}
-              ${renderJsonSelectField('botJson', 'viewDistance', '视距', getJsonPathValue(botObject, 'viewDistance') || 'tiny', [
-                { value: 'tiny', label: 'tiny' },
-                { value: 'short', label: 'short' },
-                { value: 'normal', label: 'normal' },
-                { value: 'far', label: 'far' },
-                { value: 'extreme', label: 'extreme' }
-              ], '登录时请求的视距')}
+              ${renderJsonViewDistanceField('botJson', 'viewDistance', '视距', botViewDistance, botViewDistance.helper)}
               ${renderJsonBooleanField('botJson', 'disableChatSigning', '关闭聊天签名', getJsonPathValue(botObject, 'disableChatSigning') !== false, '兼容旧服聊天')}
               ${renderJsonNumberField('botJson', 'checkTimeoutInterval', 'KeepAlive 超时', getJsonPathValue(botObject, 'checkTimeoutInterval') ?? 30000, '毫秒', '1')}
               ${renderJsonBooleanField('botJson', 'restartOnDisconnect', '断线自动重连', getJsonPathValue(botObject, 'restartOnDisconnect') !== false, '断线后自动拉起')}
@@ -696,7 +981,7 @@
                 { value: 'trustedPlayers', label: 'trustedPlayers' },
                 { value: 'all', label: 'all' }
               ], '普通 TPA 的自动接受模式')}
-              ${renderJsonTextField('botJson', 'teleport.whitelistFile', 'TPA 白名单文件', getJsonPathValue(botObject, 'teleport.whitelistFile') || '', '相对 bot 目录')}
+              ${renderJsonTextField('botJson', 'teleport.whitelistFile', 'TPA 白名单文件', getJsonPathValue(botObject, 'teleport.whitelistFile') || '', '相对当前 bot 目录；填 ../whitelist.txt = 用 serverDir 共享名单', '../whitelist.txt')}
             </div>
             ${renderJsonListField('botJson', 'trustedPlayers', '信任玩家列表', Array.isArray(getJsonPathValue(botObject, 'trustedPlayers')) ? getJsonPathValue(botObject, 'trustedPlayers') : [], '一行一个玩家名')}
           </div>
@@ -993,6 +1278,14 @@
             }
             value = parsedValue;
           }
+        } else if (fieldType === 'view-distance') {
+          const parsed = normalizeViewDistanceInput(element.value);
+          if (!parsed.valid) {
+            element.classList.add('input-invalid');
+            return;
+          }
+          element.classList.remove('input-invalid');
+          value = parsed.value;
         } else if (fieldType === 'string-list') {
           value = Array.from(new Set(
             String(element.value || '')
@@ -1036,11 +1329,17 @@
 
   const api = {
     EDITOR_TABS,
+    VIEW_DISTANCE_TIER_BITS,
     normalizeEditorTab,
     applyEditorTab,
     renderEditor,
     parseNumberListText,
     applyReconnectModeToggle,
+    isServerTopLevelOnlyPath,
+    getEffectiveServerValue,
+    formatViewDistanceForDisplay,
+    normalizeViewDistanceInput,
+    validateInstanceConfig,
     getInstanceKey,
     getInstanceServerOptions,
     applyInstanceFilters,

@@ -237,16 +237,18 @@ node .\index.js
 
 - `server.json` 影响同一 `serverDir` 下的所有 bot
 - `default.config.json` 也影响同一 `serverDir` 下的所有 bot
-- 当前实例自己的 `config.json` 优先级高于 `default.config.json`
-- `server.json` 里如果还保留旧式 `connection` 包裹，面板会按同一层级兼容显示和保存
+- 当前实例自己的 `config.json` 优先级最高
+- `server.json` 里如果还保留旧式 `connection` 包裹，面板会对连接字段按同一层级兼容读写；但 `openAuth`、`teleportPromptMatchers`、`restartDelayScheduleMs` / `restartDelayScheduleRepeatLast` 这几组后端只读顶层，面板也固定写顶层
 - 如果你要让受信任玩家名单按上层配置合并，可在 JSON 里写 `trustedPlayersMergeParent: true`
 - 保存时按“整文件替换”语义提交，删除字段也会真正落盘
 
 后端合并优先级是：
 
 ```text
-当前实例 config.json > serverDir/default.config.json > 内建默认值
+当前实例 config.json > serverDir/default.config.json > server.json（含 connection）> 后端内建默认值
 ```
+
+注意：`host` / `port` / `auth` / `version` / `viewDistance` / `disableChatSigning` / `checkTimeoutInterval` / `restartOnDisconnect` / `restartDelayMs` / `restartJitterMs` / `enabled` / `autoStart` / `username` / `email` / `id` 这些“运行时字段”三份文件都能写，实例 `config.json` 会覆盖 `server.json`。另外 `server.json` 一旦启用 `openAuth`，后端会强校验 `host` / `port` / `auth`（必须 `microsoft`）/ `version`（必须 `1.21.11`），任一不满足都会导致后端配置加载失败；面板在保存前会先拦截这类值。
 
 如果删除了某个字段，但运行后看起来仍然生效，优先检查这个字段是否来自 `default.config.json` 或内建默认值。
 
@@ -271,11 +273,18 @@ node .\index.js
 
 实例编辑器里现在还提供了一层“快速配置”表单，覆盖这些常用项：
 
-- `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`，以及多级重连开关（`restartDelayScheduleMs` 分级延迟数组 + `restartDelayScheduleRepeatLast` 耗尽后是否重复最后一级）
-- `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.*`、`capabilities.*`、`fish`、`attack.autoAttack`、`monitoring.enabled`、`recording.*`
+- `server.json`：`host`、`port`、`auth`、`version`、`viewDistance`（数字=视距位值，后端默认 `2`）、`chunkBatchReplyChunksPerTick`、`disableChatSigning`、`checkTimeoutInterval`、`restartOnDisconnect`、`restartDelayMs`、`restartJitterMs`，多级重连开关（`restartDelayScheduleMs` 分级延迟数组 + `restartDelayScheduleRepeatLast` 耗尽后是否重复最后一级），以及 `openAuth.enabled` / `openAuth.requestTimeoutMs` 与 `teleportPromptMatchers.stripLines` / `tpa` / `tpahere`
+- `default.config.json`：`trustedPlayers`、`trustedPlayersMergeParent`、`trustedPlayersFile`、`teleport.*`、`logging.*`、`behavior.enableResourcePack`、`capabilities.*`（含 `inventoryHandling`）、`fish`、`attack.autoAttack`、`monitoring.enabled`、`recording.enabled` / `recording.outputDir`
 - `config.json`：常用运行时开关和能力项，完整内容保留在“高级 JSON”标签
 
 这层 GUI 不是新的数据源，只是帮你少手改 JSON；底层仍然按三份文件和后端合并规则生效。
+
+关于取值域，有几点与后端强绑定：
+
+- `viewDistance` 用数字输入：mineflayer 的字符串档位可等效换算（`tiny=6`、`short=8`、`normal=10`、`far=12`），面板按等效数字显示，改动后写成数字；`extreme` 不是合法档位，已从面板移除
+- `behavior.enableSpawnActions` 与 `behavior.whitelistReloadMinutes` 是后端当前未接线的兼容字段，表单已移除，需要时在“高级 JSON”标签直接编辑
+- 开启 `openAuth` 后，`config.json` 里的 `host` / `port` / `auth` / `version` 不再生效（由 `server.json` 接管），面板会把这几项显示为不可编辑
+- 保存前面板会拦截几类会让后端配置加载直接失败的值：非法的 `viewDistance`、`openAuth` 启用但连接字段不满足强校验、非法的 `teleportPromptMatchers` 正则、空的或非法的 `restartDelayScheduleMs`
 
 多级重连与旧版固定延迟重连互斥：开启“多级重连”开关后，面板会写入默认分级延迟数组并移除 `restartDelayMs`；关闭开关则移除 `restartDelayScheduleMs` / `restartDelayScheduleRepeatLast`。`restartOnDisconnect` 仍是总开关，`restartJitterMs` 两种模式共用。
 

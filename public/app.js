@@ -1385,6 +1385,17 @@
         return;
       }
 
+      const configValidationError = instancesComponent.validateInstanceConfig({
+        serverObject,
+        defaultBotObject,
+        botObject
+      });
+      if (configValidationError) {
+        instanceModalState.editor.error = configValidationError;
+        requestRender();
+        return;
+      }
+
       if (
         instanceModalState.editor.mode === 'create' &&
         !String(botObject.username || botObject.email || '').trim()

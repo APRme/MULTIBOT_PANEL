@@ -550,6 +550,18 @@ textarea:focus-visible,
   background: rgba(12, 16, 19, 0.65);
 }
 
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  color: var(--text-secondary);
+  background: rgba(12, 16, 19, 0.65);
+  cursor: not-allowed;
+}
+
+.input.input-invalid {
+  border-color: var(--danger);
+}
+
 .select {
   color-scheme: dark;
 }
