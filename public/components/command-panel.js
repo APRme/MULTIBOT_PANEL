@@ -68,10 +68,15 @@
 
     form?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const command = event.currentTarget.command.value;
+      if (!commandInput) {
+        return;
+      }
+
+      // event.currentTarget 在 await 之后会被置为 null，这里用渲染时捕获的元素引用。
+      const command = commandInput.value;
       const result = await Promise.resolve(props.onSendCommand(command));
       if (result === true) {
-        event.currentTarget.command.value = '';
+        commandInput.value = '';
         if (typeof props.onUpdateCommandDraft === 'function') {
           props.onUpdateCommandDraft('');
         }

@@ -279,6 +279,12 @@
     let renderQueuedWhileTyping = false;
     const commandDrafts = new Map();
 
+    // 指针按下期间被抑制重建的面板（含祖先链）：若这段时间内 innerHTML 被替换，
+    // mouseup 会落在新节点上，浏览器不再派发 click，表现为“点了没反应”。
+    const pointerDownSectionKeys = new Set();
+    let pointerSuppressTimer = null;
+    const POINTER_SUPPRESS_MAX_MS = 500;
+
     function getCommandDraftKey(backendId, botId) {
       return `${String(backendId || '').trim()}/${String(botId || '').trim()}`;
     }
@@ -384,8 +390,18 @@
     const sectionCache = new WeakMap();
 
     function renderSection(sectionKey, container, dataProps, renderFn) {
+      if (container && container.dataset && container.dataset.renderSection !== sectionKey) {
+        container.dataset.renderSection = sectionKey;
+      }
+
       const serialized = stableStringify(dataProps);
       const cached = sectionCache.get(container);
+
+      // 指针按下期间跳过重建（不更新缓存，抬手后下一次渲染自然补上）。
+      if (pointerDownSectionKeys.has(sectionKey)) {
+        return cached ? cached.extra || null : null;
+      }
+
       if (cached && cached.sectionKey === sectionKey && cached.serialized === serialized) {
         return cached.extra || null;
       }
@@ -397,6 +413,43 @@
         extra: extra || null
       });
       return extra || null;
+    }
+
+    function clearPointerDownSections() {
+      pointerDownSectionKeys.clear();
+      if (pointerSuppressTimer !== null) {
+        global.clearTimeout(pointerSuppressTimer);
+        pointerSuppressTimer = null;
+      }
+    }
+
+    function markPointerDownSections(event) {
+      const target = event && event.target;
+      if (!target || typeof target.closest !== 'function') {
+        return;
+      }
+
+      pointerDownSectionKeys.clear();
+      let element = target.closest('[data-render-section]');
+      // 收集整条祖先链：外层 section 重建同样会换掉内层按钮节点。
+      while (element) {
+        const sectionKey = element.getAttribute('data-render-section');
+        if (sectionKey) {
+          pointerDownSectionKeys.add(sectionKey);
+        }
+        element = element.parentElement
+          ? element.parentElement.closest('[data-render-section]')
+          : null;
+      }
+
+      if (pointerSuppressTimer !== null) {
+        global.clearTimeout(pointerSuppressTimer);
+      }
+      // 兜底：即使 pointerup / pointercancel 丢失，抑制也不会超过这个时长。
+      pointerSuppressTimer = global.setTimeout(() => {
+        pointerSuppressTimer = null;
+        pointerDownSectionKeys.clear();
+      }, POINTER_SUPPRESS_MAX_MS);
     }
 
     function flushScheduledRender() {
@@ -2033,11 +2086,16 @@
       }
 
       if (detailSlots && detailSlots.commandContainer && selectedBackend && selectedBot) {
+        // 注意：commandDraft 不参与脏检查——否则“打字后点发送”会先把输入框失焦、
+        // 触发 focusout 补渲染，把按钮换成新节点，click 因此丢失（表现为点了没反应）。
+        // 渲染时仍从 getCommandDraft() 取值，所以文本不会丢。
+        // 不变式：draft 的每次变更都必须伴随“直接写 DOM”或“另一个脏 props 变化”，
+        // 现有路径：打字=DOM 本身；历史 chip 直接写 commandInput.value；
+        // 发送成功写 input.value 并由 lastCommandResult / commandHistory 触发重渲染。
         renderSection('command-panel', detailSlots.commandContainer, {
           botId: selectedBot.id,
           canSend: selectedBackend.connectionState !== 'offline' && selectedBackend.connectionState !== 'auth_error',
           commandHistory: state.ui.commandHistory,
-          commandDraft: getCommandDraft(selectedBackend.id, selectedBot.id),
           lastCommandResult: selectedBot.lastCommandResult || null
         }, (container) => {
           commandPanelComponent.renderCommandPanel(container, {
@@ -2124,6 +2182,11 @@
         flushQueuedRenderAfterTyping();
       }, 0);
     }, true);
+
+    global.document.addEventListener('pointerdown', markPointerDownSections, true);
+    global.document.addEventListener('pointerup', clearPointerDownSections, true);
+    global.document.addEventListener('pointercancel', clearPointerDownSections, true);
+    global.addEventListener('blur', clearPointerDownSections);
 
     syncBackendsModal();
     syncInstancesModal();
