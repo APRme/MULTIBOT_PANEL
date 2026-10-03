@@ -99,6 +99,12 @@
           method: 'POST'
         });
       },
+      async clickWindow(profile, botId, payload) {
+        return requestJson(profile, `/api/bots/${encodeURIComponent(botId)}/window-click`, {
+          method: 'POST',
+          body: payload
+        });
+      },
       async getInstances(profile) {
         return requestJson(profile, '/api/instances');
       },

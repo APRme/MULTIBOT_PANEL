@@ -1505,6 +1505,7 @@ input[type="checkbox"] {
 }
 
 .inventory-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 6px;
@@ -1641,4 +1642,47 @@ input[type="checkbox"] {
 
 .inv-slot-durability {
   z-index: 1;
+}
+
+/* ---------- 光标（手上拿着）物品与丢出区 ---------- */
+
+.inv-cursor-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 16, 19, 0.88);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.inv-cursor-item[hidden] {
+  display: none;
+}
+
+.inventory-actions {
+  gap: 6px;
+}
+
+.inv-drop-zone {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px dashed var(--danger);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.inv-drop-zone:hover {
+  background: rgba(224, 100, 105, 0.15);
+  color: var(--text);
 }

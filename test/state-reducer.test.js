@@ -637,6 +637,85 @@ test('SET_BOT_INVENTORY stores window with slots indexed by slot number', () => 
   assert.equal(Object.keys(inventory.slots).length, 2);
 });
 
+test('SET_BOT_INVENTORY keeps title and cursor for the window click UI', () => {
+  let state = createInitialState({
+    backends: [
+      { id: 'backend-1', name: 'One', baseUrl: 'http://a', token: 'a', enabled: true }
+    ]
+  });
+  state = reduceState(state, {
+    type: 'SET_BACKEND_BOTS',
+    backendId: 'backend-1',
+    bots: [{ id: 'bot-1', username: 'Nitager', state: 'running' }]
+  });
+
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: {
+      id: 0,
+      name: 'inventory',
+      supported: true,
+      title: 'container.chest',
+      inventoryStart: 9,
+      inventoryEnd: 45,
+      cursor: { slot: -1, name: 'minecraft:stone', displayName: '石头', count: 12 },
+      slots: [{ slot: 9, name: 'minecraft:dirt', displayName: '泥土', count: 3 }]
+    }
+  });
+
+  let inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.title, 'container.chest');
+  assert.equal(inventory.cursor.name, 'minecraft:stone');
+  assert.equal(inventory.cursor.count, 12);
+
+  // 光标消失时归一化为 null，避免 UI 拿到 undefined
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: {
+      id: 0,
+      name: 'inventory',
+      supported: true,
+      inventoryStart: 9,
+      inventoryEnd: 45,
+      cursor: null,
+      slots: []
+    }
+  });
+  inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.cursor, null);
+  assert.equal(inventory.title, null);
+
+  // patch 不带光标：只改槽位，光标保持
+  state = reduceState(state, {
+    type: 'SET_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    window: {
+      id: 0,
+      name: 'inventory',
+      supported: true,
+      inventoryStart: 9,
+      inventoryEnd: 45,
+      cursor: { name: 'minecraft:diamond', displayName: '钻石', count: 1 },
+      slots: []
+    }
+  });
+  state = reduceState(state, {
+    type: 'PATCH_BOT_INVENTORY',
+    backendId: 'backend-1',
+    botId: 'bot-1',
+    windowId: 0,
+    slots: { '9': { slot: 9, name: 'minecraft:stone', displayName: '石头', count: 1 } }
+  });
+  inventory = state.backends.byId['backend-1'].bots.byId['bot-1'].inventory;
+  assert.equal(inventory.cursor.name, 'minecraft:diamond');
+  assert.equal(inventory.slots['9'].name, 'minecraft:stone');
+});
+
 test('SET_BOT_INVENTORY with null window clears inventory', () => {
   let state = createInitialState({
     backends: [

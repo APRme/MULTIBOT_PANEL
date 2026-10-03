@@ -138,14 +138,235 @@ test('slot items cover layout sections even when inventoryEnd excludes offhand',
   assert.match(html, /data-slot="0"/);
 });
 
-test('drop count resolution honors shift and alt modifiers', () => {
-  const inventory = createChestInventory();
-  assert.equal(inventoryPanel.resolveDropCount(inventory, 2, {}), null);
-  assert.equal(inventoryPanel.resolveDropCount(inventory, 2, { shiftKey: true }), 32);
-  assert.equal(inventoryPanel.resolveDropCount(inventory, 2, { altKey: true }), 1);
-  assert.equal(inventoryPanel.resolveDropCount(inventory, 2, { ctrlKey: true }), 1);
-  assert.equal(inventoryPanel.resolveDropCount(inventory, 0, { shiftKey: true }), null);
+test('press actions follow the in-game mapping (act on press)', () => {
+  assert.equal(inventoryPanel.getPressAction({ button: 0 }), 'left');
+  assert.equal(inventoryPanel.getPressAction({ button: 0, shiftKey: true }), 'shift');
+  assert.equal(inventoryPanel.getPressAction({ button: 2 }), 'right');
+  assert.equal(inventoryPanel.getPressAction({ button: 2, shiftKey: true }), 'shift-right');
+  assert.equal(inventoryPanel.getPressAction({ button: 1 }), 'clone');
+  assert.equal(inventoryPanel.getPressAction({ button: 3 }), null);
+  assert.equal(inventoryPanel.getMouseButtonName(0), 'left');
+  assert.equal(inventoryPanel.getMouseButtonName(1), 'middle');
+  assert.equal(inventoryPanel.getMouseButtonName(2), 'right');
+  assert.equal(inventoryPanel.getMouseButtonName(5), null);
 });
+
+test('double click detection needs the same slot, the same button and a short interval', () => {
+  const first = { slot: 9, button: 0, time: 1000 };
+  assert.equal(inventoryPanel.isDoubleClick(first, { slot: 9, button: 0, time: 1200 }), true);
+  assert.equal(inventoryPanel.isDoubleClick(first, { slot: 9, button: 0, time: 1400 }), false);
+  assert.equal(inventoryPanel.isDoubleClick(first, { slot: 10, button: 0, time: 1100 }), false);
+  assert.equal(inventoryPanel.isDoubleClick(first, { slot: 9, button: 2, time: 1100 }), false);
+  assert.equal(inventoryPanel.isDoubleClick(null, { slot: 9, button: 0, time: 1100 }), false);
+});
+
+test('keyboard payloads cover hotbar swap, offhand and drop', () => {
+  assert.deepEqual(inventoryPanel.getKeyboardPayload(9, { key: '3' }), { slot: 9, action: 'swap', swapSlot: '3' });
+  assert.deepEqual(inventoryPanel.getKeyboardPayload(9, { key: 'F' }), { slot: 9, action: 'swap', swapSlot: 'offhand' });
+  assert.deepEqual(inventoryPanel.getKeyboardPayload(9, { key: 'q' }), { slot: 9, action: 'drop' });
+  assert.deepEqual(inventoryPanel.getKeyboardPayload(9, { key: 'Q', ctrlKey: true }), { slot: 9, action: 'dropstack' });
+  assert.equal(inventoryPanel.getKeyboardPayload(9, { key: '0' }), null);
+  assert.equal(inventoryPanel.getKeyboardPayload(9, { key: 'a' }), null);
+  assert.equal(inventoryPanel.getKeyboardPayload(null, { key: '1' }), null);
+});
+
+test('client hints guard the two silent vanilla rules', () => {
+  const cursorItem = { slot: -1, name: 'minecraft:stone', displayName: '石头', count: 5 };
+  const inventory = {
+    cursor: null,
+    slots: { '9': { slot: 9, name: 'minecraft:dirt', displayName: '泥土', count: 3 } }
+  };
+  const withCursor = { ...inventory, cursor: cursorItem };
+
+  // drop 只在光标为空时有效
+  assert.match(inventoryPanel.getClientHint({ slot: 9, action: 'drop' }, withCursor), /光标上有物品/);
+  assert.equal(inventoryPanel.getClientHint({ slot: 9, action: 'drop' }, inventory), '');
+  assert.match(inventoryPanel.getClientHint({ slot: 9, action: 'dropstack' }, withCursor), /光标上有物品/);
+
+  // collect 需要对空格双击，且手上要拿着东西
+  assert.match(inventoryPanel.getClientHint({ slot: 9, action: 'collect' }, inventory), /先左键拿起/);
+  assert.match(
+    inventoryPanel.getClientHint({ slot: 9, action: 'collect' }, { ...withCursor, slots: { '9': inventory.slots['9'] } }),
+    /请对空格双击收集/
+  );
+  assert.equal(inventoryPanel.getClientHint({ slot: 10, action: 'collect' }, withCursor), '');
+
+  // 点窗口外丢出需要光标上有物品
+  assert.match(inventoryPanel.getClientHint({ slot: -999, action: 'left' }, inventory), /无需丢出/);
+  assert.equal(inventoryPanel.getClientHint({ slot: -999, action: 'left' }, withCursor), '');
+
+  // 普通点击与拖拽不受约束
+  assert.equal(inventoryPanel.getClientHint({ slot: 9, action: 'left' }, inventory), '');
+  assert.equal(inventoryPanel.getClientHint({ slot: -999, action: 'drag-start', button: 'left' }, inventory), '');
+});
+
+test('drag tracker only upgrades to a drag after entering another slot', () => {
+  const tracker = inventoryPanel.createDragTracker();
+
+  assert.equal(tracker.press(0, 9), true);
+  assert.equal(tracker.press(0, 10), false, 'second press while holding is ignored');
+  assert.equal(tracker.enter(9), null, 'still on the origin slot: no drag yet');
+  assert.deepEqual(tracker.enter(10), { start: true, add: 10, button: 0 });
+  assert.equal(tracker.enter(10), null, 'duplicate slot entry is ignored');
+  assert.deepEqual(tracker.enter(11), { start: false, add: 11, button: 0 });
+  assert.deepEqual(tracker.enter(9), { start: false, add: 9, button: 0 });
+  assert.deepEqual(tracker.release(), { wasDrag: true, button: 0 });
+  assert.equal(tracker.isPressing(), false);
+});
+
+test('drag tracker reports a plain click when no other slot was entered', () => {
+  const tracker = inventoryPanel.createDragTracker();
+  tracker.press(2, 5);
+  assert.equal(tracker.enter(5), null);
+  assert.deepEqual(tracker.release(), { wasDrag: false, button: 2 });
+});
+
+test('optimistic pickup only predicts the left-click pickup case', () => {
+  const inventory = {
+    cursor: null,
+    slots: { '9': { slot: 9, name: 'minecraft:stone', displayName: '石头', count: 64 } }
+  };
+
+  const overlay = inventoryPanel.createPickupOverlay(inventory, { slot: 9, action: 'left' });
+  assert.equal(overlay.clearedSlot, 9);
+  assert.equal(overlay.cursor.count, 64);
+
+  const view = inventoryPanel.applyOptimisticOverlay(inventory, overlay);
+  assert.equal(view.slots['9'], undefined);
+  assert.equal(view.cursor.count, 64);
+  assert.equal(inventory.slots['9'].count, 64, 'original inventory is not mutated');
+
+  assert.equal(inventoryPanel.createPickupOverlay(inventory, { slot: 9, action: 'right' }), null);
+  assert.equal(inventoryPanel.createPickupOverlay(inventory, { slot: 8, action: 'left' }), null);
+  assert.equal(inventoryPanel.createPickupOverlay({ ...inventory, cursor: { name: 'x' } }, { slot: 9, action: 'left' }), null);
+  assert.equal(inventoryPanel.applyOptimisticOverlay(inventory, null), inventory);
+});
+
+test('cursor follow point is clamped to the frame and hover slots are read back', () => {
+  assert.deepEqual(inventoryPanel.clampCursorPoint({ x: -20, y: 30 }, { width: 176, height: 166 }), { x: 0, y: 30 });
+  assert.deepEqual(inventoryPanel.clampCursorPoint({ x: 300, y: 300 }, { width: 176, height: 166 }), { x: 176, y: 166 });
+
+  assert.equal(inventoryPanel.getHoveredSlot({ dataset: { hoverSlot: '45' } }), 45);
+  assert.equal(inventoryPanel.getHoveredSlot({ dataset: {} }), null);
+  assert.equal(inventoryPanel.getHoveredSlot({ dataset: { hoverSlot: '' } }), null);
+  assert.equal(inventoryPanel.getHoveredSlot(null), null);
+});
+
+test('cursor item html renders only when an item is held', () => {
+  assert.equal(inventoryPanel.renderCursorHtml(null), '');
+  const html = inventoryPanel.renderCursorHtml({
+    name: 'minecraft:stone',
+    displayName: '石头',
+    count: 12
+  });
+  assert.match(html, /data-role="cursor-item"/);
+  assert.match(html, /inv-slot-count">12</);
+  assert.match(html, /assets\/items\/stone\.png/);
+});
+
+test('slot interaction sends a click on press and a drag sequence after entering another slot', () => {
+  const handlers = new Map();
+  const grid = {
+    addEventListener(type, handler) {
+      handlers.set(type, handler);
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 176, height: 166 };
+    }
+  };
+  const panelRoot = { dataset: {} };
+  const container = {
+    querySelector(selector) {
+      if (selector === '[data-role="inventory-panel"]') return panelRoot;
+      if (selector === '[data-role="inventory-grid"]') return grid;
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    }
+  };
+
+  const sent = [];
+  const hints = [];
+  const inventory = {
+    id: 0,
+    name: 'inventory',
+    supported: true,
+    inventoryStart: 9,
+    inventoryEnd: 45,
+    cursor: null,
+    slots: { '9': { slot: 9, name: 'minecraft:stone', displayName: '石头', count: 64 } }
+  };
+
+  inventoryPanel.renderInventoryPanel(container, {
+    inventory,
+    onWindowClick(payload) {
+      sent.push(payload);
+    },
+    onClientHint(message) {
+      hints.push(message);
+    }
+  });
+
+  function slotElement(slot) {
+    return {
+      getAttribute(name) {
+        return name === 'data-slot' ? String(slot) : null;
+      },
+      closest(selector) {
+        return selector === '.inv-slot' ? this : null;
+      }
+    };
+  }
+
+  const mousedown = (payload) => handlers.get('mousedown')(payload);
+  const pointerover = (payload) => handlers.get('pointerover')(payload);
+  const pointerup = (payload) => handlers.get('pointerup')(payload);
+  assert.equal(typeof handlers.get('mousedown'), 'function');
+  assert.equal(typeof handlers.get('pointerover'), 'function');
+  assert.equal(typeof handlers.get('pointerup'), 'function');
+
+  // 单击：按下即发语义动作（不依赖松开）
+  mousedown({ target: slotElement(9), button: 0, shiftKey: false, preventDefault() {} });
+  assert.deepEqual(sent, [{ slot: 9, action: 'left' }]);
+
+  // app 层随即做乐观预测并重渲染：光标拿到物品、该格清空（真实链路就是这样）
+  const overlay = inventoryPanel.createPickupOverlay(inventory, sent[0]);
+  assert.ok(overlay, 'pickup should be predicted optimistically');
+  const optimisticView = inventoryPanel.applyOptimisticOverlay(inventory, overlay);
+  inventoryPanel.renderInventoryPanel(container, {
+    inventory: optimisticView,
+    onWindowClick(payload) {
+      sent.push(payload);
+    },
+    onClientHint(message) {
+      hints.push(message);
+    }
+  });
+
+  // 双击判定必须跨重渲染存活，第二次按下才会变成 collect
+  mousedown({ target: slotElement(9), button: 0, shiftKey: false, preventDefault() {} });
+  assert.deepEqual(sent[1], { slot: 9, action: 'collect' });
+
+  // Shift+点击直接快速移动，不进入拖拽
+  mousedown({ target: slotElement(9), button: 0, shiftKey: true, preventDefault() {} });
+  assert.deepEqual(sent[2], { slot: 9, action: 'shift' });
+
+  // 拖拽：按下 → 进入另一格才补 drag-start 与 drag-add → 松开 drag-end
+  mousedown({ target: slotElement(10), button: 0, shiftKey: false, preventDefault() {} });
+  assert.deepEqual(sent[3], { slot: 10, action: 'left' });
+  pointerover({ target: slotElement(11), relatedTarget: slotElement(10) });
+  assert.deepEqual(sent[4], { slot: -999, action: 'drag-start', button: 'left' });
+  assert.deepEqual(sent[5], { slot: 11, action: 'drag-add', button: 'left' });
+  pointerover({ target: slotElement(12), relatedTarget: slotElement(11) });
+  assert.deepEqual(sent[6], { slot: 12, action: 'drag-add', button: 'left' });
+  pointerup({});
+  assert.deepEqual(sent[7], { slot: -999, action: 'drag-end', button: 'left' });
+  assert.equal(sent.length, 8);
+  assert.equal(hints.length, 0);
+  assert.equal(panelRoot.dataset.hoverSlot, '12');
+});
+
 
 test('slot pixel positions follow the standard 9-column gui layout', () => {
   const chestLayout = inventoryPanel.SLOT_LAYOUTS.chest;

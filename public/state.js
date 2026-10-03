@@ -146,8 +146,12 @@
       id: Number.isInteger(window.id) ? window.id : null,
       name: typeof window.name === 'string' ? window.name : 'unknown',
       supported: window.supported !== false,
+      title: typeof window.title === 'string' && window.title ? window.title : null,
       inventoryStart: Number.isInteger(window.inventoryStart) ? window.inventoryStart : 0,
       inventoryEnd: Number.isInteger(window.inventoryEnd) ? window.inventoryEnd : 0,
+      cursor: window.cursor && typeof window.cursor === 'object' && !Array.isArray(window.cursor)
+        ? window.cursor
+        : null,
       slots
     };
   }

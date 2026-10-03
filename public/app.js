@@ -416,10 +416,15 @@
     }
 
     function clearPointerDownSections() {
+      const hadSuppressed = pointerDownSectionKeys.size > 0;
       pointerDownSectionKeys.clear();
       if (pointerSuppressTimer !== null) {
         global.clearTimeout(pointerSuppressTimer);
         pointerSuppressTimer = null;
+      }
+      // 抑制期间被跳过的面板（例如点击后立刻出现的乐观光标）要在抬手后补一次渲染
+      if (hadSuppressed) {
+        requestRender();
       }
     }
 
@@ -967,6 +972,7 @@
       const startedAt = Date.now();
       try {
         const response = await apiClient.getInventory(backend, botId);
+        clearOptimisticInventory(backendId, botId);
         store.dispatch({
           type: 'SET_BOT_INVENTORY',
           backendId,
@@ -979,23 +985,67 @@
       }
     }
 
-    async function sendChestCommand(backendId, botId, command) {
+    // 轻量乐观：只预测“左键把一整组拿到光标上”，等 SSE 的 window 事件带来真实光标后清掉。
+    // 其余语义（放下/合并/拆半/交换/丢弃）一律以服务器为准，避免本地预测与真实状态打架。
+    const OPTIMISTIC_INVENTORY_TTL_MS = 1500;
+    const optimisticInventoryByBot = new Map();
+
+    function getInventoryKey(backendId, botId) {
+      return `${String(backendId || '')}/${String(botId || '')}`;
+    }
+
+    function clearOptimisticInventory(backendId, botId) {
+      optimisticInventoryByBot.delete(getInventoryKey(backendId, botId));
+    }
+
+    function getOptimisticInventory(backendId, botId) {
+      const key = getInventoryKey(backendId, botId);
+      const overlay = optimisticInventoryByBot.get(key);
+      if (!overlay) return null;
+      if (Number.isFinite(overlay.expiresAt) && overlay.expiresAt <= Date.now()) {
+        optimisticInventoryByBot.delete(key);
+        return null;
+      }
+      return overlay;
+    }
+
+    function getBotInventoryView(backendId, botId) {
       const backend = store.getState().backends.byId[backendId];
-      if (!backend) return;
+      const inventory = backend && backend.bots.byId[botId] ? backend.bots.byId[botId].inventory : null;
+      return inventoryPanelComponent.applyOptimisticOverlay(
+        inventory || null,
+        getOptimisticInventory(backendId, botId)
+      );
+    }
+
+    async function clickBotWindow(backendId, botId, payload) {
+      const backend = store.getState().backends.byId[backendId];
+      if (!backend || !payload) return;
+
+      const overlay = inventoryPanelComponent.createPickupOverlay(getBotInventoryView(backendId, botId), payload);
+      if (overlay) {
+        const key = getInventoryKey(backendId, botId);
+        const entry = { ...overlay, expiresAt: Date.now() + OPTIMISTIC_INVENTORY_TTL_MS };
+        optimisticInventoryByBot.set(key, entry);
+        requestRender();
+        global.setTimeout(() => {
+          if (optimisticInventoryByBot.get(key) === entry) {
+            optimisticInventoryByBot.delete(key);
+            requestRender();
+          }
+        }, OPTIMISTIC_INVENTORY_TTL_MS);
+      }
 
       try {
-        const result = await apiClient.sendCommand(backend, botId, command);
-        store.dispatch({
-          type: 'SET_LAST_COMMAND_RESULT',
-          backendId,
-          botId,
-          result
-        });
+        await apiClient.clickWindow(backend, botId, payload);
       } catch (error) {
+        clearOptimisticInventory(backendId, botId);
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: `物品操作失败: ${error.message}`
+          message: `窗口点击失败: ${error.message}`
         });
+        // 后端拒绝时立即回拉一次真实窗口，避免界面停在预测状态
+        void refreshBotInventory(backendId, botId);
       }
     }
 
@@ -1103,6 +1153,8 @@
       if (event.event === 'inventory' && event.data && event.data.botId) {
         const data = event.data;
         if (data.type === 'window') {
+          // window 事件带权威 cursor，乐观预测到此为止
+          clearOptimisticInventory(backendId, data.botId);
           store.dispatch({
             type: 'SET_BOT_INVENTORY',
             backendId,
@@ -2060,23 +2112,25 @@
       });
 
       if (detailSlots && detailSlots.inventoryContainer && selectedBackend && selectedBot) {
+        const optimisticOverlay = getOptimisticInventory(selectedBackend.id, selectedBot.id);
         renderSection('inventory-panel', detailSlots.inventoryContainer, {
-          inventory: selectedBot.inventory || null
+          inventory: selectedBot.inventory || null,
+          optimisticCursor: optimisticOverlay ? optimisticOverlay.cursor || null : null,
+          optimisticClearedSlot: optimisticOverlay ? optimisticOverlay.clearedSlot : null
         }, (container) => {
           inventoryPanelComponent.renderInventoryPanel(container, {
-            inventory: selectedBot.inventory || null,
-            onMoveItem(fromSlot, toSlot, count) {
-              if (!Number.isInteger(fromSlot) || !Number.isInteger(toSlot) || fromSlot < 0 || toSlot < 0) {
-                store.dispatch({
-                  type: 'SET_GLOBAL_MESSAGE',
-                  message: `无效的槽位参数: ${fromSlot} -> ${toSlot}`
-                });
-                return;
-              }
-              const command = count == null
-                ? `chest move ${fromSlot} ${toSlot}`
-                : `chest move ${fromSlot} ${toSlot} ${count}`;
-              void sendChestCommand(selectedBackend.id, selectedBot.id, command);
+            inventory: inventoryPanelComponent.applyOptimisticOverlay(
+              selectedBot.inventory || null,
+              optimisticOverlay
+            ),
+            onWindowClick(payload) {
+              void clickBotWindow(selectedBackend.id, selectedBot.id, payload);
+            },
+            onClientHint(message) {
+              store.dispatch({
+                type: 'SET_GLOBAL_MESSAGE',
+                message
+              });
             },
             onCloseWindow() {
               void closeBotWindow(selectedBackend.id, selectedBot.id);
@@ -2171,6 +2225,37 @@
           closeBackendsModal();
         }
       }
+
+      // 背包快捷键：只在鼠标悬停在某个格子上时生效，且不抢输入框的按键
+      const target = event.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      const inventoryContainer = global.document.querySelector('[data-role="inventory-panel"]');
+      const hoverSlot = inventoryPanelComponent.getHoveredSlot(inventoryContainer);
+      if (hoverSlot === null) return;
+
+      const payload = inventoryPanelComponent.getKeyboardPayload(hoverSlot, {
+        key: event.key,
+        ctrlKey: event.ctrlKey
+      });
+      if (!payload) return;
+
+      const state = store.getState();
+      const backend = getSelectedBackend(state);
+      const bot = getSelectedBot(state);
+      if (!backend || !bot) return;
+
+      event.preventDefault();
+
+      const hint = inventoryPanelComponent.getClientHint(payload, getBotInventoryView(backend.id, bot.id));
+      if (hint) {
+        store.dispatch({ type: 'SET_GLOBAL_MESSAGE', message: hint });
+        return;
+      }
+
+      void clickBotWindow(backend.id, bot.id, payload);
     });
 
     global.addEventListener('resize', () => {

@@ -236,6 +236,8 @@ MULTIBOT
 - `command-panel.js`
 - `logs-panel.js`
 - `instances.js`
+- `inventory-panel.js`
+- `bot-detail.js`
 
 这些模块的共同特征：
 
@@ -245,6 +247,17 @@ MULTIBOT
 - 不维护复杂内部状态
 
 这是一个显式、可读性优先的渲染模型。
+
+### 4.12 `inventory-panel.js` 的交互层
+
+背包面板是本项目里唯一“可操作”的渲染器：它既要画格子，也要把鼠标手势翻译成 `POST /api/bots/:id/window-click` 的载荷。
+
+- **按下即生效**：与游戏内一致，`mousedown` 就发出语义动作（`left` / `right` / `shift` / `shift-right` / `collect` / `clone`）
+- **惰性升级为拖拽**：按下只记录 `(槽位, 按键)`；指针首次进入**另一个**槽位时才补发 `drag-start`（`slot:-999`），随后每个新槽位一次 `drag-add`，`mouseup` 发 `drag-end`
+- **键盘不在这里**：组件只把悬停槽位写进 `container.dataset.hoverSlot`，`app.js` 的全局 `keydown` 读取它并处理 `1-9` / `F` / `Q` / `Ctrl+Q`
+- **两条原版静默规则的本地拦截**：`drop` / `dropstack` 要求光标为空、`collect` 要求被点格为空，命中时只提示不发请求
+- **模块级瞬时状态**：因为每次 props 变化都会 `innerHTML` 重建 DOM，光标停留点、双击判定与拖拽状态机不能放在渲染闭包里，改为模块级变量保存（这是对“不维护复杂内部状态”的一处有意例外，仅限视图局部数据）
+- **乐观显示**：只预测“左键把一整组拿到光标上”，由 `app.js` 以覆盖层形式叠加，并在 SSE `window` 事件（或 1.5s 超时）后清除；槽位状态始终以服务器回推为准
 
 ## 5. 状态模型
 

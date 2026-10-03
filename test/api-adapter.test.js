@@ -105,6 +105,39 @@ test('api client sends auth headers and instance/command payloads', async () => 
   });
 });
 
+test('api client posts window clicks with the raw payload', async () => {
+  const calls = [];
+  const apiClient = createApiClient({
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return createJsonResponse(200, {
+        ok: true,
+        click: { windowId: 0, slot: 9, action: 'left', skipped: false }
+      });
+    }
+  });
+
+  const profile = { baseUrl: 'http://127.0.0.1:18080', token: 'secret-token' };
+
+  const leftClick = await apiClient.clickWindow(profile, 'bot-1', { slot: 9, action: 'left' });
+  assert.equal(leftClick.click.action, 'left');
+  assert.equal(calls[0].url, 'http://127.0.0.1:18080/api/bots/bot-1/window-click');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer secret-token');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { slot: 9, action: 'left' });
+
+  await apiClient.clickWindow(profile, 'bot 2', { slot: -999, action: 'left' });
+  assert.equal(calls[1].url, 'http://127.0.0.1:18080/api/bots/bot%202/window-click');
+  assert.deepEqual(JSON.parse(calls[1].init.body), { slot: -999, action: 'left' });
+
+  await apiClient.clickWindow(profile, 'bot-1', {
+    slot: 12,
+    action: 'drag-add',
+    button: 'right'
+  });
+  assert.deepEqual(JSON.parse(calls[2].init.body), { slot: 12, action: 'drag-add', button: 'right' });
+});
+
 test('api client normalizes auth and network errors', async () => {
   const authClient = createApiClient({
     fetchImpl: async () => createJsonResponse(401, { error: 'unauthorized' })
