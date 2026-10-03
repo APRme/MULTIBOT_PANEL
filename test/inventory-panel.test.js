@@ -170,6 +170,71 @@ test('keyboard payloads cover hotbar swap, offhand and drop', () => {
   assert.equal(inventoryPanel.getKeyboardPayload(null, { key: '1' }), null);
 });
 
+test('double click still collects when the optimistic re-render has not landed yet', () => {
+  const handlers = new Map();
+  const grid = {
+    addEventListener(type, handler) {
+      handlers.set(type, handler);
+    },
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 176, height: 166 };
+    }
+  };
+  const container = {
+    querySelector(selector) {
+      if (selector === '[data-role="inventory-panel"]') return { dataset: {} };
+      if (selector === '[data-role="inventory-grid"]') return grid;
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    }
+  };
+
+  const sent = [];
+  const hints = [];
+  // 故意用“过期视图”：光标仍为空、格子仍有物品（乐观重渲染还没发生）
+  const staleInventory = {
+    id: 0,
+    name: 'inventory',
+    supported: true,
+    inventoryStart: 9,
+    inventoryEnd: 45,
+    cursor: null,
+    slots: { '9': { slot: 9, name: 'minecraft:stone', displayName: '石头', count: 64 } }
+  };
+
+  inventoryPanel.renderInventoryPanel(container, {
+    inventory: staleInventory,
+    onWindowClick(payload) {
+      sent.push(payload);
+    },
+    onClientHint(message) {
+      hints.push(message);
+    }
+  });
+
+  function slotElement(slot) {
+    return {
+      getAttribute(name) {
+        return name === 'data-slot' ? String(slot) : null;
+      },
+      closest(selector) {
+        return selector === '.inv-slot' ? this : null;
+      }
+    };
+  }
+
+  handlers.get('mousedown')({ target: slotElement(9), button: 0, shiftKey: false, preventDefault() {} });
+  handlers.get('mousedown')({ target: slotElement(9), button: 0, shiftKey: false, preventDefault() {} });
+
+  assert.deepEqual(sent, [
+    { slot: 9, action: 'left' },
+    { slot: 9, action: 'collect' }
+  ]);
+  assert.equal(hints.length, 0, 'no misleading hint for a valid double click');
+});
+
 test('client hints guard the two silent vanilla rules', () => {
   const cursorItem = { slot: -1, name: 'minecraft:stone', displayName: '石头', count: 5 };
   const inventory = {

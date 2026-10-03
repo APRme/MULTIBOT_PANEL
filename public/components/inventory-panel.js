@@ -353,18 +353,28 @@
   }
 
   // 两条原版硬约束是“静默”的：返回非空字符串表示本地拦截并提示，不发请求。
-  function getClientHint(payload, inventory) {
+  // options.pendingPickupSlot：刚发出、但乐观重渲染可能还没落地的“左键拿起”槽位，
+  // 用于避免双击第二下落在过期视图上被误判成“手上没东西”。
+  function getClientHint(payload, inventory, options = {}) {
     if (!payload) return '';
     const cursor = inventory && inventory.cursor ? inventory.cursor : null;
+    const pendingPickupSlot = Number.isInteger(options.pendingPickupSlot)
+      ? options.pendingPickupSlot
+      : null;
 
     if (payload.action === 'drop' || payload.action === 'dropstack') {
       return cursor ? '光标上有物品时按 Q 无效（原版规则）：先放下再丢弃' : '';
     }
 
     if (payload.action === 'collect') {
-      if (!cursor) return '双击收集需要手上先拿着同类物品：先左键拿起一格';
+      const justPickedThisSlot = pendingPickupSlot !== null && pendingPickupSlot === payload.slot;
+      if (!cursor && !justPickedThisSlot) {
+        return '双击收集需要手上先拿着同类物品：先左键拿起一格';
+      }
       const slotItem = payload.slot >= 0 ? getItemBySlot(inventory, payload.slot) : null;
-      return slotItem ? '请对空格双击收集（先左键拿起，该格变空后再双击）' : '';
+      return slotItem && !justPickedThisSlot
+        ? '请对空格双击收集（先左键拿起，该格变空后再双击）'
+        : '';
     }
 
     if (payload.slot === -999 && payload.action === 'left' && !cursor) {
@@ -476,8 +486,23 @@
   let lastCursorPoint = null;
   let lastCursorSize = null;
   let lastPress = null;
+  let pendingLeftPickup = null;
   let activeInteraction = null;
   let documentReleaseBound = false;
+
+  function setPendingLeftPickup(slot, time) {
+    pendingLeftPickup = Number.isInteger(slot) ? { slot, time } : null;
+  }
+
+  function getPendingLeftPickupSlot() {
+    if (!pendingLeftPickup) return null;
+    const age = Date.now() - pendingLeftPickup.time;
+    if (age < 0 || age > DOUBLE_CLICK_INTERVAL_MS) {
+      pendingLeftPickup = null;
+      return null;
+    }
+    return pendingLeftPickup.slot;
+  }
 
   function bindDocumentRelease() {
     if (documentReleaseBound || typeof global.document === 'undefined') return;
@@ -495,7 +520,9 @@
     const tracker = createDragTracker();
 
     function sendClick(payload) {
-      const hint = getClientHint(payload, props.inventory);
+      const hint = getClientHint(payload, props.inventory, {
+        pendingPickupSlot: getPendingLeftPickupSlot()
+      });
       if (hint) {
         if (typeof props.onClientHint === 'function') props.onClientHint(hint);
         return;
@@ -546,7 +573,9 @@
         if (doubleClick) {
           closePendingDrag();
           lastPress = null;
+          // 注意顺序：collect 的本地校验要用到“刚拿起”这条凭据，发完再清
           sendClick({ slot, action: 'collect' });
+          setPendingLeftPickup(null);
           return;
         }
 
@@ -554,12 +583,19 @@
           // 原版 Shift+拖拽无效果：直接快速移动，不进入拖拽候选
           closePendingDrag();
           lastPress = null;
+          setPendingLeftPickup(null);
           sendClick({ slot, action });
           return;
         }
 
         closePendingDrag();
         lastPress = action === 'left' ? { slot, button: event.button, time: now } : null;
+        // 记下“这一下很可能拿起了物品”，供双击第二下判断（乐观重渲染可能还没落地）
+        const inventoryCursor = props.inventory && props.inventory.cursor ? props.inventory.cursor : null;
+        setPendingLeftPickup(
+          action === 'left' && !inventoryCursor && getItemBySlot(props.inventory, slot) ? slot : null,
+          now
+        );
         tracker.press(event.button, slot);
         sendClick({ slot, action });
       });
