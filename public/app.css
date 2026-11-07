@@ -141,11 +141,14 @@ textarea:focus-visible,
 }
 
 #app {
+  height: 100vh;
   height: 100dvh;
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 #status-bar {
@@ -153,7 +156,7 @@ textarea:focus-visible,
   z-index: 10;
   flex: 0 0 auto;
   min-height: 64px;
-  padding: 11px 16px;
+  padding: calc(11px + env(safe-area-inset-top, 0px)) 16px 11px;
   border-bottom: 1px solid var(--border);
   background: #121619;
   box-shadow: var(--shadow-app);
@@ -1031,13 +1034,27 @@ input[type="checkbox"] {
   overflow: auto;
 }
 
-.detail-main > [data-slot="logs-panel"] {
+.console-unit {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.console-unit > [data-slot="logs-panel"],
+.console-unit > [data-slot="command-panel"] {
+  min-width: 0;
+}
+
+/* 日志输出与控制台输入接成一个整体：内部不画分隔线，只在整块底部画一条 */
+.console-unit > [data-slot="logs-panel"] > .panel-section,
+.console-unit > [data-slot="command-panel"] > .panel-section {
+  border-bottom: 0;
 }
 
 .detail-bottom {
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
+  grid-template-columns: 1fr;
   gap: 0;
   border-top: 1px solid var(--border);
 }
@@ -1309,10 +1326,6 @@ input[type="checkbox"] {
   #layout {
     grid-template-columns: minmax(286px, var(--bots-panel-width)) 8px minmax(0, 1fr);
   }
-
-  .detail-bottom {
-    grid-template-columns: minmax(260px, 0.75fr) minmax(330px, 1.25fr);
-  }
 }
 
 @media (max-width: 1100px) {
@@ -1401,6 +1414,12 @@ input[type="checkbox"] {
     flex-direction: column;
   }
 
+  /* Bot 卡片例外：名字与状态保持同一行，卡片更矮、一屏能多看几个 */
+  .list-card > .row.space {
+    align-items: center;
+    flex-direction: row;
+  }
+
   .toolbar-group {
     width: 100%;
   }
@@ -1440,9 +1459,13 @@ input[type="checkbox"] {
     width: 100%;
   }
 
-  .filter-row,
   .meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* 两个筛选下拉并排，省下一行高度留给列表 */
+  .filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .modal-shell {
@@ -1481,6 +1504,11 @@ input[type="checkbox"] {
 
   .preset-surface {
     margin: 14px 12px 0;
+  }
+
+  /* 手机上让 Bot 列表拿到更多可视高度（原来 42dvh 只剩约 100px 给列表） */
+  .panel-middle {
+    max-height: 58dvh;
   }
 }
 
@@ -1685,4 +1713,371 @@ input[type="checkbox"] {
 .inv-drop-zone:hover {
   background: rgba(224, 100, 105, 0.15);
   color: var(--text);
+}
+
+/* ===== 移动端 Bot 列表抽屉（仅 ≤1100px 生效，桌面端不受影响） ===== */
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(2, 6, 9, 0.76);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+
+body.bot-drawer-open .drawer-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.bot-drawer-open {
+  overflow: hidden;
+}
+
+.drawer-toggle,
+.drawer-invite,
+.drawer-close {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .drawer-toggle,
+  .drawer-invite,
+  .drawer-close {
+    display: inline-flex;
+  }
+
+  #bots-panel {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    /* 抽屉用自己的宽度：--bots-panel-width 是桌面拖拽宽度，窄屏下会被钳到 240px */
+    width: min(360px, 86vw);
+    max-height: none;
+    min-height: 0;
+    border-left: 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.22s;
+  }
+
+  body.bot-drawer-open #bots-panel {
+    transform: none;
+    visibility: visible;
+    box-shadow: 0 18px 48px rgba(2, 6, 9, 0.55);
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+  }
+
+  /* 抽屉头部：标题在左、操作按钮贴右上角（覆盖窄屏下 .row.space 的纵向堆叠） */
+  #bots-panel .section-heading {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  #bots-panel .section-heading-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #bots-panel .action-row {
+    flex: 0 0 auto;
+  }
+}
+
+@media (min-width: 1101px) {
+  #bots-panel {
+    position: static;
+    transform: none;
+    visibility: visible;
+  }
+
+  .drawer-backdrop {
+    display: none;
+  }
+}
+
+/* ===== 点击水波（ripple） ===== */
+
+/* 全局 ripple 图层：承载宿主裁剪盒，避免面板重渲染把动画节点一起换掉 */
+.ripple-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  pointer-events: none;
+}
+
+.ripple-clip {
+  position: absolute;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  opacity: 0;
+  border-radius: 50%;
+}
+
+.ripple.is-visible {
+  opacity: 0.3;
+  transform: scale(1);
+  animation: ripple-enter 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ripple.is-pulsate.is-visible {
+  animation-duration: 0.25s;
+}
+
+.ripple-child {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ripple.is-pulsate .ripple-child {
+  animation: ripple-pulse 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: 0.2s;
+}
+
+.ripple.is-leaving .ripple-child {
+  animation: ripple-exit 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes ripple-enter {
+  0% {
+    transform: scale(0);
+    opacity: 0.1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+}
+
+@keyframes ripple-exit {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ripple-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ===== Toast：底部居中的轻量提示（替代原顶部 banner） ===== */
+
+.toast-layer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  width: min(480px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast-layer[hidden] {
+  display: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: 4px;
+  background: #323232;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.43;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  animation: toast-in 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast.toast-success {
+  box-shadow: inset 3px 0 0 var(--success), 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.toast.toast-error {
+  background: #8f2b2e;
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.toast-close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.toast-close:focus-visible {
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.toast-leave {
+  animation: toast-out 180ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ripple-layer {
+    display: none;
+  }
+
+  .toast,
+  .toast-leave {
+    animation: none;
+  }
+}
+
+/* ===== iOS「添加到主屏幕」引导（仅 iOS Safari 且非独立窗口显示） ===== */
+
+.install-hint-layer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 58;
+  width: min(420px, calc(100vw - 24px));
+  transform: translateX(-50%);
+}
+
+.install-hint-layer[hidden] {
+  display: none;
+}
+
+.install-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 30px rgba(2, 6, 9, 0.55);
+}
+
+.install-hint-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.install-hint-body strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.install-hint-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.install-hint-key {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-soft);
+  font-size: 11px;
+}
+
+.install-hint-close {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.install-hint-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.install-hint-close:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus);
 }

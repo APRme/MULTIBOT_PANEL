@@ -213,7 +213,10 @@
               <h2 class="title">Bot 列表</h2>
               <p class="subtitle" data-role="bot-count">${formatters.escapeHtml(backend.name)} · ${filteredBots.length}/${serverBotCount}</p>
             </div>
-            <button class="button icon-button small" type="button" data-action="refresh-backend" aria-label="刷新 Bot 列表" title="刷新 Bot 列表"><span class="button-icon" aria-hidden="true">↻</span></button>
+            <div class="row action-row">
+              <button class="button icon-button small" type="button" data-action="refresh-backend" aria-label="刷新 Bot 列表" title="刷新 Bot 列表"><span class="button-icon" aria-hidden="true">↻</span></button>
+              <button class="button icon-button small drawer-close" type="button" data-action="close-bot-drawer" aria-label="关闭 Bot 列表" title="关闭 Bot 列表"><span class="button-icon" aria-hidden="true">×</span></button>
+            </div>
           </div>
           <div class="stack filter-surface">
             <label class="label search-field">

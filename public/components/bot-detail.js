@@ -10,7 +10,7 @@
       : String(bot?.desiredRunning ?? '-');
 
     if (!backend || !bot) {
-      container.innerHTML = '<div class="empty-state empty-state-composed detail-empty"><strong>选择一个 Bot</strong><span>查看实时日志、运行状态并发送控制台输入。</span></div>';
+      container.innerHTML = '<div class="empty-state empty-state-composed detail-empty"><strong>选择一个 Bot</strong><span>查看实时日志、运行状态并发送控制台输入。</span><button class="button primary drawer-invite" type="button" data-action="open-bot-drawer">选择 Bot</button></div>';
       return {
         logsContainer: null,
         commandContainer: null
@@ -31,7 +31,10 @@
             </div>
           </div>
         </div>
-        <div data-slot="logs-panel"></div>
+        <div class="console-unit">
+          <div data-slot="logs-panel"></div>
+          <div data-slot="command-panel"></div>
+        </div>
         <div data-slot="inventory-panel"></div>
         <div class="detail-bottom">
           <div class="panel-section stack detail-overview">
@@ -64,7 +67,6 @@
               </div>
             </div>
           </div>
-          <div data-slot="command-panel"></div>
         </div>
       </div>
     `;

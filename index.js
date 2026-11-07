@@ -10,13 +10,14 @@ const DEFAULT_CONFIG = {
 };
 
 // 版本号规则见 AGENTS.md：V<年份两位>.<自然季度>.<小版本>，小版本每提交一次加 1、跨年归零。
-const PANEL_VERSION = 'V26.4.50';
+const PANEL_VERSION = 'V26.4.59';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
@@ -153,6 +154,28 @@ function createPanelServer(options = {}) {
 
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         sendJson(res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
+      // Service Worker：把版本号注入进去，缓存名随每次发版变化，避免旧缓存长期锁死
+      if (pathname === '/sw.js') {
+        const swPath = path.join(publicDir, 'sw.js');
+        if (!fs.existsSync(swPath)) {
+          sendText(res, 404, 'Not Found');
+          return;
+        }
+        const source = fs.readFileSync(swPath, 'utf8').replace('__PANEL_VERSION__', version);
+        setSecurityHeaders(res);
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Service-Worker-Allowed': '/'
+        });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        res.end(source);
         return;
       }
 

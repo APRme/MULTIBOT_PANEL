@@ -9,7 +9,8 @@
     botFilterState: 'all',
     botFilterServer: '',
     logLevelFilter: 'all',
-    globalMessage: null
+    globalMessage: null,
+    globalMessageKind: null
   };
 
   function createBackendRuntime(profile) {
@@ -546,6 +547,7 @@
 
       case 'SET_GLOBAL_MESSAGE': {
         nextState.ui.globalMessage = action.message || null;
+        nextState.ui.globalMessageKind = action.message ? (action.kind || 'neutral') : null;
         return nextState;
       }
 

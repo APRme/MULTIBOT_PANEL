@@ -2,10 +2,17 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="MULTIBOT 浏览器运维控制面板">
-  <meta name="theme-color" content="#0f1214">
+  <meta name="theme-color" content="#121619">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MULTIBOT">
   <title>MULTIBOT 控制面板</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="stylesheet" href="./app.css">
 </head>
 <body>
@@ -13,10 +20,13 @@
   <div id="app">
     <header id="status-bar"></header>
     <main id="layout">
-      <section id="bots-panel" class="panel panel-middle"></section>
+      <section id="bots-panel" class="panel panel-middle" tabindex="-1"></section>
       <div id="layout-resizer" class="layout-resizer" role="separator" aria-orientation="vertical" aria-label="调整左侧列表宽度"></div>
       <section id="detail-panel" class="panel panel-right"></section>
     </main>
+    <button type="button" id="bot-drawer-backdrop" class="drawer-backdrop" data-action="close-bot-drawer" tabindex="-1" aria-label="关闭 Bot 列表"></button>
+    <div id="toast-layer" class="toast-layer" aria-live="polite" aria-atomic="true" hidden></div>
+    <div id="install-hint" class="install-hint-layer" hidden></div>
     <div id="backends-modal" class="modal-shell" hidden>
       <div class="modal-backdrop" data-action="close-backends-modal"></div>
       <div class="modal-dialog">
@@ -38,7 +48,10 @@
   <script defer src="./state.js"></script>
   <script defer src="./sse.js"></script>
   <script defer src="./instance-presets.js"></script>
+  <script defer src="./ripple.js"></script>
   <script defer src="./components/status-bar.js"></script>
+  <script defer src="./components/toast.js"></script>
+  <script defer src="./components/install-hint.js"></script>
   <script defer src="./components/backends.js"></script>
   <script defer src="./components/bot-list.js"></script>
   <script defer src="./components/instances.js"></script>

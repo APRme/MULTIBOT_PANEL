@@ -14,6 +14,9 @@
   const commandPanelComponent = namespace.components.commandPanel;
   const logsPanelComponent = namespace.components.logsPanel;
   const inventoryPanelComponent = namespace.components.inventoryPanel;
+  const toastComponent = namespace.components.toast;
+  const installHintComponent = namespace.components.installHint;
+  const rippleModule = namespace.ripple;
   const instancePresetsModule = namespace.instancePresets;
   const avatarClient = namespace.skin.createAvatarClient();
   const BOT_LIST_WIDTH_STORAGE_KEY = 'multibot_panel.bot_list_width.v1';
@@ -164,7 +167,10 @@
       instancesModal: document.getElementById('instances-modal'),
       instancesPanel: document.getElementById('instances-panel'),
       botsPanel: document.getElementById('bots-panel'),
-      detailPanel: document.getElementById('detail-panel')
+      detailPanel: document.getElementById('detail-panel'),
+      toastLayer: document.getElementById('toast-layer'),
+      installHintLayer: document.getElementById('install-hint'),
+      botDrawerBackdrop: document.getElementById('bot-drawer-backdrop')
     };
 
     const editorState = {
@@ -178,6 +184,10 @@
       backendsOpen: persistedBackends.length === 0,
       instancesOpen: false
     };
+    const botDrawerState = {
+      open: false
+    };
+    const BOT_DRAWER_MEDIA_QUERY = '(max-width: 1100px)';
     const splitState = {
       width: loadPersistedBotListWidth(global.localStorage),
       dragging: false
@@ -625,6 +635,143 @@
       syncBackendsModal();
     }
 
+    function isBotDrawerViewport() {
+      if (typeof global.matchMedia !== 'function') return false;
+      return global.matchMedia(BOT_DRAWER_MEDIA_QUERY).matches;
+    }
+
+    function setBotDrawerOpen(open, options = {}) {
+      const next = Boolean(open) && isBotDrawerViewport();
+      const wasOpen = botDrawerState.open;
+      botDrawerState.open = next;
+      global.document.body.classList.toggle('bot-drawer-open', next);
+
+      const toggle = global.document.querySelector('[data-action="toggle-bot-drawer"]');
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+      }
+
+      if (next && !wasOpen && dom.botsPanel && typeof dom.botsPanel.focus === 'function') {
+        dom.botsPanel.focus({ preventScroll: true });
+      }
+
+      if (!next && wasOpen && options.restoreFocus !== false && toggle && typeof toggle.focus === 'function') {
+        toggle.focus({ preventScroll: true });
+      }
+    }
+
+    function openBotDrawer() {
+      setBotDrawerOpen(true);
+    }
+
+    function closeBotDrawer(options) {
+      setBotDrawerOpen(false, options || {});
+    }
+
+    function toggleBotDrawer() {
+      setBotDrawerOpen(!botDrawerState.open);
+    }
+
+    let toastTimerId = null;
+    let lastToastKey = null;
+
+    function dismissGlobalMessage() {
+      const expected = store.getState().ui.globalMessage;
+      if (!expected) return;
+
+      const toast = dom.toastLayer ? dom.toastLayer.querySelector('.toast') : null;
+      if (!toast) {
+        store.dispatch({ type: 'SET_GLOBAL_MESSAGE', message: null });
+        return;
+      }
+
+      toast.classList.add('toast-leave');
+      global.setTimeout(() => {
+        if (store.getState().ui.globalMessage === expected) {
+          store.dispatch({ type: 'SET_GLOBAL_MESSAGE', message: null });
+        }
+      }, 180);
+    }
+
+    function scheduleToastDismissal() {
+      const { globalMessage, globalMessageKind } = store.getState().ui;
+      const kind = globalMessageKind || 'neutral';
+      const key = globalMessage ? `${kind}\u0000${globalMessage}` : null;
+      if (key === lastToastKey) return;
+
+      lastToastKey = key;
+      if (toastTimerId) {
+        global.clearTimeout(toastTimerId);
+        toastTimerId = null;
+      }
+      if (!globalMessage) return;
+
+      toastTimerId = global.setTimeout(() => {
+        toastTimerId = null;
+        dismissGlobalMessage();
+      }, kind === 'error' ? 8000 : 4000);
+    }
+
+    // ===== PWA：iOS 安装引导（iOS 没有 beforeinstallprompt，只能给手动步骤） =====
+
+    const INSTALL_HINT_KEY = 'multibot_panel.install_hint_dismissed.v1';
+
+    function isIosSafari() {
+      const ua = String((global.navigator && global.navigator.userAgent) || '');
+      const isIosDevice = /iPad|iPhone|iPod/.test(ua)
+        || (ua.includes('Macintosh') && 'ontouchend' in global.document);
+      const isOtherBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|mercury/i.test(ua);
+      return isIosDevice && !isOtherBrowser;
+    }
+
+    function isStandaloneMode() {
+      if (global.navigator && global.navigator.standalone === true) return true;
+      if (typeof global.matchMedia !== 'function') return false;
+      return global.matchMedia('(display-mode: standalone)').matches
+        || global.matchMedia('(display-mode: fullscreen)').matches;
+    }
+
+    function isInstallHintDismissed() {
+      try {
+        return global.localStorage.getItem(INSTALL_HINT_KEY) === '1';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function dismissInstallHint() {
+      try {
+        global.localStorage.setItem(INSTALL_HINT_KEY, '1');
+      } catch (error) {
+        // localStorage 不可用时仅本次隐藏
+      }
+      if (dom.installHintLayer) {
+        dom.installHintLayer.innerHTML = '';
+        dom.installHintLayer.hidden = true;
+      }
+    }
+
+    function renderInstallHint() {
+      if (!dom.installHintLayer || !installHintComponent) return;
+      const visible = isIosSafari() && !isStandaloneMode() && !isInstallHintDismissed();
+      installHintComponent.renderInstallHint(dom.installHintLayer, {
+        visible,
+        onDismiss() {
+          dismissInstallHint();
+        }
+      });
+    }
+
+    function registerServiceWorker() {
+      if (!global.navigator || !('serviceWorker' in global.navigator)) return;
+      const { protocol, hostname } = global.location;
+      const secureContext = protocol === 'https:'
+        || hostname === 'localhost'
+        || hostname === '127.0.0.1';
+      if (!secureContext) return;
+      global.navigator.serviceWorker.register('./sw.js').catch(() => null);
+    }
+
     function syncInstancesModal() {
       if (!dom.instancesModal) return;
       dom.instancesModal.hidden = !modalState.instancesOpen;
@@ -958,7 +1105,8 @@
         if (!(options && options.silent)) {
           store.dispatch({
             type: 'SET_GLOBAL_MESSAGE',
-            message: `加载 Bot 详情失败: ${error.message}`
+            message: `加载 Bot 详情失败: ${error.message}`,
+          kind: 'error'
           });
         }
       }
@@ -1042,7 +1190,8 @@
         clearOptimisticInventory(backendId, botId);
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: `窗口点击失败: ${error.message}`
+          message: `窗口点击失败: ${error.message}`,
+          kind: 'error'
         });
         // 后端拒绝时立即回拉一次真实窗口，避免界面停在预测状态
         void refreshBotInventory(backendId, botId);
@@ -1058,7 +1207,8 @@
       } catch (error) {
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: `关闭窗口失败: ${error.message}`
+          message: `关闭窗口失败: ${error.message}`,
+          kind: 'error'
         });
       }
     }
@@ -1246,7 +1396,8 @@
       } catch (error) {
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: `${action} 失败: ${error.message}`
+          message: `${action} 失败: ${error.message}`,
+          kind: 'error'
         });
       }
     }
@@ -1274,7 +1425,8 @@
       } catch (error) {
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: `发送命令失败: ${error.message}`
+          message: `发送命令失败: ${error.message}`,
+          kind: 'error'
         });
       }
     }
@@ -1578,7 +1730,8 @@
         closeInstanceEditor();
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: isCreateMode ? '实例创建成功' : '实例更新成功'
+          message: isCreateMode ? '实例创建成功' : '实例更新成功',
+          kind: 'success'
         });
 
         await refreshBackend(backend.id, { loadSelectedBot: true });
@@ -1611,7 +1764,8 @@
         });
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: '实例启动请求已发送'
+          message: '实例启动请求已发送',
+          kind: 'success'
         });
         await refreshBackend(backend.id, { loadSelectedBot: true });
         await refreshInstances(backend.id, {
@@ -1638,7 +1792,8 @@
         await apiClient.deleteInstance(backend, serverDir, botDir);
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: '实例已删除'
+          message: '实例已删除',
+          kind: 'success'
         });
         await refreshBackend(backend.id, { loadSelectedBot: true });
         await refreshInstances(backend.id, {
@@ -1708,7 +1863,8 @@
         editorState.error = '';
         store.dispatch({
           type: 'SET_GLOBAL_MESSAGE',
-          message: '测试连接成功'
+          message: '测试连接成功',
+          kind: 'success'
         });
       } catch (error) {
         editorState.error = `测试连接失败: ${error.message}`;
@@ -1803,14 +1959,19 @@
         backendBaseUrl: selectedBackend ? selectedBackend.baseUrl : null,
         backendConnectionState: selectedBackend ? selectedBackend.connectionState : null,
         selectedBotId: selectedBot ? selectedBot.id : null,
-        globalMessage: state.ui.globalMessage
+        globalMessage: state.ui.globalMessage,
+        globalMessageKind: state.ui.globalMessageKind,
+        botDrawerOpen: botDrawerState.open
       }, (container) => {
         statusBar.renderStatusBar(container, {
           title: 'MULTIBOT 控制面板',
           backendCount: state.backends.allIds.length,
           selectedBackend,
           selectedBot,
-          globalMessage: state.ui.globalMessage,
+          botDrawerOpen: botDrawerState.open,
+          onToggleBotDrawer() {
+            toggleBotDrawer();
+          },
           onOpenBackends() {
             openBackendsModal();
           },
@@ -1823,15 +1984,23 @@
             } else {
               void refreshAllBackends();
             }
-          },
-          onDismissMessage() {
-            store.dispatch({
-              type: 'SET_GLOBAL_MESSAGE',
-              message: null
-            });
           }
         });
       });
+
+      renderSection('toast', dom.toastLayer, {
+        message: state.ui.globalMessage,
+        kind: state.ui.globalMessageKind
+      }, (container) => {
+        toastComponent.renderToast(container, {
+          message: state.ui.globalMessage,
+          kind: state.ui.globalMessageKind,
+          onDismiss() {
+            dismissGlobalMessage();
+          }
+        });
+      });
+      scheduleToastDismissal();
 
       if (modalState.backendsOpen) {
         renderSection('backends-panel', dom.backendsPanel, {
@@ -2074,6 +2243,7 @@
           },
           onSelectBot(botId) {
             selectBot(botId);
+            closeBotDrawer({ restoreFocus: false });
           },
           onStartBot(botId) {
             if (selectedBackend) void runBotAction('start', selectedBackend.id, botId);
@@ -2213,7 +2383,47 @@
       closeInstancesModal();
     });
 
+    if (rippleModule && typeof rippleModule.init === 'function') {
+      rippleModule.init({ document: global.document });
+    }
+
     dom.layoutResizer?.addEventListener('mousedown', startLayoutResize);
+
+    dom.botDrawerBackdrop?.addEventListener('click', () => {
+      closeBotDrawer();
+    });
+
+    dom.detailPanel?.addEventListener('click', (event) => {
+      const trigger = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-action="open-bot-drawer"]')
+        : null;
+      if (trigger) {
+        openBotDrawer();
+      }
+    });
+
+    dom.botsPanel?.addEventListener('click', (event) => {
+      const trigger = event.target && typeof event.target.closest === 'function'
+        ? event.target.closest('[data-action="close-bot-drawer"]')
+        : null;
+      if (trigger) {
+        closeBotDrawer();
+      }
+    });
+
+    if (typeof global.matchMedia === 'function') {
+      const drawerMedia = global.matchMedia(BOT_DRAWER_MEDIA_QUERY);
+      const onDrawerViewportChange = (event) => {
+        if (!event.matches && botDrawerState.open) {
+          closeBotDrawer({ restoreFocus: false });
+        }
+      };
+      if (typeof drawerMedia.addEventListener === 'function') {
+        drawerMedia.addEventListener('change', onDrawerViewportChange);
+      } else if (typeof drawerMedia.addListener === 'function') {
+        drawerMedia.addListener(onDrawerViewportChange);
+      }
+    }
 
     global.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
@@ -2223,6 +2433,10 @@
         }
         if (modalState.backendsOpen) {
           closeBackendsModal();
+        }
+        if (botDrawerState.open) {
+          closeBotDrawer();
+          return;
         }
       }
 
@@ -2277,6 +2491,8 @@
     syncInstancesModal();
     applyBotListWidth(splitState.width, false);
     render();
+    renderInstallHint();
+    registerServiceWorker();
 
     if (store.getState().backends.selectedBackendId) {
       const backend = getSelectedBackend(store.getState());

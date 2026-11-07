@@ -126,6 +126,42 @@ test('createPanelServer serves static files, healthz and 404', async () => {
   }
 });
 
+test('createPanelServer serves PWA assets and injects the service worker version', async () => {
+  const publicDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-pwa-'));
+  fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>pwa</title>', 'utf8');
+  fs.writeFileSync(path.join(publicDir, 'manifest.webmanifest'), JSON.stringify({
+    name: 'MULTIBOT 控制面板',
+    display: 'standalone'
+  }), 'utf8');
+  fs.writeFileSync(path.join(publicDir, 'sw.js'), "const VERSION = '__PANEL_VERSION__';\n", 'utf8');
+  fs.writeFileSync(path.join(publicDir, 'offline.html'), '<!doctype html><title>offline</title>', 'utf8');
+
+  const server = createPanelServer({ publicDir, title: 'Panel Test' });
+  const baseUrl = await listen(server);
+
+  try {
+    const manifestResponse = await fetch(`${baseUrl}/manifest.webmanifest`);
+    assert.equal(manifestResponse.status, 200);
+    assert.match(manifestResponse.headers.get('content-type') || '', /application\/manifest\+json/);
+    assert.equal(manifestResponse.headers.get('cache-control'), 'no-cache');
+
+    const swResponse = await fetch(`${baseUrl}/sw.js`);
+    assert.equal(swResponse.status, 200);
+    assert.match(swResponse.headers.get('content-type') || '', /application\/javascript/);
+    assert.equal(swResponse.headers.get('service-worker-allowed'), '/');
+    assert.equal(swResponse.headers.get('cache-control'), 'no-cache');
+    const swSource = await swResponse.text();
+    assert.doesNotMatch(swSource, /__PANEL_VERSION__/);
+    assert.ok(swSource.includes(`'${PANEL_VERSION}'`), `sw.js 应注入版本号 ${PANEL_VERSION}`);
+
+    const offlineResponse = await fetch(`${baseUrl}/offline.html`);
+    assert.equal(offlineResponse.status, 200);
+    assert.match(offlineResponse.headers.get('content-type') || '', /text\/html/);
+  } finally {
+    await close(server);
+  }
+});
+
 test('resolvePublicFile rejects traversal into similarly named sibling directories', () => {
   const parentDir = fs.mkdtempSync(path.join(PANEL_TEMP_ROOT, 'multibot-panel-path-'));
   const publicDir = path.join(parentDir, 'public');

@@ -9,3 +9,6 @@ public/assets/
 
 # 待删除区（按协作规则只移动不删除，等待用户确认）
 .pending-delete/
+
+# 部署脚本与容器模板：只在本地使用，不入库
+deploy/

@@ -5,8 +5,8 @@
   function renderStatusBar(container, props) {
     const selectedBackend = props.selectedBackend;
     const selectedBot = props.selectedBot;
-    const globalMessage = props.globalMessage;
     const backendCount = Number.isFinite(props.backendCount) ? props.backendCount : 0;
+    const drawerOpen = props.botDrawerOpen === true;
 
     const backendStateClass = selectedBackend
       ? formatters.formatStateClass(selectedBackend.connectionState)
@@ -32,20 +32,19 @@
           ${selectedBot
             ? `<span class="chip">当前 Bot：<span class="mono">${formatters.escapeHtml(selectedBot.id)}</span></span>`
             : ''}
+          <button class="button drawer-toggle" type="button" data-action="toggle-bot-drawer" aria-controls="bots-panel" aria-expanded="${drawerOpen ? 'true' : 'false'}" aria-label="打开 Bot 列表"><span class="button-icon" aria-hidden="true">☰</span>Bot 列表</button>
           <button class="button" type="button" data-action="open-backends"><span class="button-icon" aria-hidden="true">▦</span>后端 <span class="button-count">${backendCount}</span></button>
           <button class="button" type="button" data-action="open-instances" ${selectedBackend ? '' : 'disabled'}><span class="button-icon" aria-hidden="true">≡</span>实例</button>
           <button class="button primary" type="button" data-action="refresh"><span class="button-icon" aria-hidden="true">↻</span>刷新</button>
         </div>
       </div>
-      ${globalMessage
-        ? `<div class="panel-section">
-            <div class="message-banner row space">
-              <span>${formatters.escapeHtml(globalMessage)}</span>
-              <button class="button ghost small" type="button" data-action="dismiss-message">关闭</button>
-            </div>
-          </div>`
-        : ''}
     `;
+
+    container.querySelector('[data-action="toggle-bot-drawer"]')?.addEventListener('click', () => {
+      if (typeof props.onToggleBotDrawer === 'function') {
+        props.onToggleBotDrawer();
+      }
+    });
 
     container.querySelector('[data-action="open-backends"]')?.addEventListener('click', () => {
       if (typeof props.onOpenBackends === 'function') {
@@ -61,10 +60,6 @@
 
     container.querySelector('[data-action="refresh"]')?.addEventListener('click', () => {
       props.onRefresh();
-    });
-
-    container.querySelector('[data-action="dismiss-message"]')?.addEventListener('click', () => {
-      props.onDismissMessage();
     });
   }
 
